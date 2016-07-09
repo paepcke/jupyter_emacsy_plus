@@ -6,7 +6,8 @@ function SafeKeyMap() {
     var _thisKeyMap = {};
     var _baseMapName = null;
     var _thisKeyMapName = null;
-    var savedKeyMaps = []; // Copy of default keymaps
+    var savedKeyMaps = []; // Copies of default keymaps
+    var savedBindings = {}; // used by suspendKeyBinding()/restoreKeyBinding()
 
     /*----------------------
       | constructor
@@ -244,10 +245,12 @@ function SafeKeyMap() {
           Returns a JavaScript promise that will yield the next
           char that the user typed in. Usage:
 
-          var charPromise = <SafeKeyMap-Instance>.getNextChar();
-          charPromise.then(function(nxtChr) {
+          <SafeKeyMap-Instance>.getNextChar().then(function(nxtChr, trueChr) {
              alert("Key was: '" + nxtChr + "'");
              })
+
+          The nxtChr will be the typed character without modifiers: 'a', 'R', ...
+          The trueChr will include the modifier: 'Ctrl-a', 'Alt-R'.
 
           :param preventDefault: if true, the effect that the incoming character 
               usually has, such as appearing on the display, will be suppressed.
@@ -262,20 +265,118 @@ function SafeKeyMap() {
         }
         var lookAheadHandler = null;
         var nxtKeyPromise = new Promise(function(resolve, reject) {
-            var followingKey = null;
             lookAheadHandler = function(cm, event) {
                 var followingKey = event.key;
+                var trueKey = null; // Ctrl-X, Alt-Y, etc
                 if (preventDefault) {
                     event.preventDefault();
                 }
                 cm.off('keypress', lookAheadHandler);
-                resolve(followingKey);
+                if (event.ctrlKey) {
+                    trueKey = 'Ctrl-' + followingKey;
+                } else if (event.altKey) {
+                    trueKey = 'Alt-' + followingKey;
+                } else if (event.shiftKey) {
+                    trueKey = 'Shift-' + followingKey;
+                } else {
+                    trueKey = followingKey;
+                }
+                resolve(trueKey);
             }
         })
         cm.on('keypress', lookAheadHandler);
         return nxtKeyPromise;
     }
     
+    /*----------------------
+      | getKeyBinding
+      | ----------------- */
+
+    var getKeyBinding = function(keystroke) {
+        /* 
+           Given a keystroke such 'a', 'Ctrl-B', etc, 
+           return the command bound to that keystroke.
+           The top-level map is searched first. Then 
+           all the fallthrough maps in order. Returns
+           the bound command or undefined.
+
+           :param keystroke: keystroke whose relevant keymap is to be found.
+           :type keystroke: string
+           :returns command bound to keystroke, or undefined.
+           :rtype {function | undefined}
+        */
+        var relevantMap = getRelevantKeyMap(keystroke);
+        if (typeof(relevantMap) != 'undefined') {
+            return relevantMap[keystroke];
+        }
+        return undefined;
+    }
+
+    /*----------------------
+      | setKeyBinding
+      | ----------------- */
+
+    var setKeyBinding = function(keystroke, cmd) {
+
+        var relevantMap = getRelevantKeyMap(keystroke);
+        if (typeof(relevantMap) === 'undefined') {
+            // Set in top-level keymap:
+            relevantMap = _thisKeyMap;
+        }
+        releventMap[keystroke] = cmd;
+    }
+    
+
+    /*----------------------
+      | deleteKeyBinding
+      | ----------------- */
+
+    var deleteKeyBinding = function(keystroke) {
+        var relevantMap = getRelevantKeyMap(keystroke);
+        if (typeof(relevantMap) === 'undefined') {
+            // Key not bound in the first place:
+            return;
+        }
+        delete relevantMap[keystroke];
+    }
+    
+
+    /*----------------------
+      | suspendKeyBinding
+      | ----------------- */
+
+    var suspendKeyBinding = function(keystroke) {
+        var relevantMap = getRelevantKeyMap(keystroke);
+        if (typeof(relevantMap) === 'undefined') {
+            throw `Called suspendKeyBinding() with unbound key ${keystroke}`;
+        }
+        savedBindings[keystroke] = {map : relevantMap, cmd : relevantMap[keystroke]};
+        deleteKeyBinding(keystroke);
+    }
+    
+
+    /*----------------------
+      | restoreKeyBinding
+      | ----------------- */
+
+    var restoreKeyBinding = function(keystroke) {
+        /*
+          Assumes that savedBindings is:
+            {keystroke1 : {map : <relevantKeyMap1>, cmd : <command1>},
+             keystroke2 : {map : <relevantKeyMap2>, cmd : <command2>}
+             }
+        */
+        var savedBinding = savedBindings[keystroke];
+        if (typeof(savedBinding) != 'undefined') {
+            savedBinding.map[keystroke] = savedBinding.cmd;
+            // Forget the suspension:
+            delete savedBinding[keystroke];
+        } else {
+            throw `Called restoreKeyBinding(${keystroke}) without prior suspendKeyBinding()`;
+        }
+    }
+
+
     /*----------------------
       | value
       | ----------------- */
@@ -318,6 +419,42 @@ function SafeKeyMap() {
         return newMap;
     }
           
+    /*----------------------
+      | getRelevantKeyMap
+      | ----------------- */
+
+    var getRelevantKeyMap = function(keystroke) {
+        /*
+          Given a keystroke, return the keymap that
+          defines that key. The top-level keymap is
+          tried first. Then the fallthrough keymaps 
+          in order.
+
+          :param keystroke: keystroke whose relevant keymap is to be found.
+          :type keystroke: string
+          :returns keymap object or undefined.
+           :rtype {object | undefined}
+         */
+        
+        var cmd = _thisKeyMap[keystroke];
+        if (typeof(cmd) != 'undefined') {
+            // Key was in the main part of the map (not the fallthrough):
+            return _thisKeyMap;
+        }
+        // Check the fallthrough maps in order:
+        for (let mapName of _thisKeyMap.fallthrough) {
+            var map = CodeMirror.keyMap[mapName];
+            if (typeof(map) != 'undefined') {
+                var cmd = map[keystroke];
+                if (typeof(cmd) != 'undefined') {
+                    return map;
+                }
+            }
+        }
+        return undefined;
+        
+    }
+
 /* ---------------------------- Call the Constructor and Export Public Methods ---------------- */          
 
     // Call the constructor:
@@ -332,6 +469,11 @@ function SafeKeyMap() {
         registerCommand : registerCommand,
         cmdFromName : cmdFromName,
         getNextChar : getNextChar,
+        getKeyBinding : getKeyBinding,
+        setKeyBinding : setKeyBinding,
+        deleteKeyBinding : deleteKeyBinding,
+        suspendKeyBinding : suspendKeyBinding,
+        restoreKeyBinding : restoreKeyBinding
         // copyKeyMap : copyKeyMap
     }
 } // end class Savedkeymaps

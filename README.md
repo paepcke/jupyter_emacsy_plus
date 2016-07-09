@@ -11,6 +11,8 @@ Advantage of using *SafeKeyMap* over doing the work directly:
 
 - Facility for copying keymaps.
 
+- Can suspend/restore particular bindings dynamically.
+
 - Facilities for clients to asynchronously wait for a key to be typed. That key may be consumed or allowed to have its usual effect. See method `getNextChar()`. The Facility uses JS promises. It is useful for implementing behaviors based on multi-key bindings such as Emacs cnt-x <?>.
 
 - Convenient container for commands that implement editing behavior.
