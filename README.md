@@ -28,9 +28,23 @@ The `nxtKey` is a string such as: 'a', 'Ctrl-b', 'Ctrl-B', 'Alt-x', etc.
 
 - Create an object {string : string} mapping keystrokes to commands.
   Example:
-        myMap['Cmd-W']  = "copyCmd";
-        myMap['Ctrl-Y'] = "yankCmd";
-        myMap['Ctrl-A'] = "goLineStart";
+		var myMap = {};
+        myMap['Cmd-W']  = "copyCmd";     // Must write
+        myMap['Ctrl-Y'] = "yankCmd";     // Must write
+        myMap['Ctrl-A'] = "goLineStart"; // Built into CodeMirror
+
+		var km = new SafeKeyMap();
+        km.registerCommand('yankCmd', yankCmd, true) // true: ok to overwrite function
+        km.registerCommand('copyCmd', copyCmd, true)
+
+		var os = km.getOsPlatform();
+        var mapName = null;
+        if (os === 'Mac' || os === 'Linux') {
+            mapName = km.installKeyMap(myMap, 'myMap', 'macDefault');
+        } else {
+            mapName = km.installKeyMap(myMap, 'my_plus', 'pcDefault');
+        }
+        km.activateKeyMap(mapName);
 
   Commands can be CodeMirror built-ins from https://codemirror.net/doc/manual.html, or new commands.
 
