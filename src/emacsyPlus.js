@@ -32,7 +32,13 @@ function EmacsyPlus() {
         //km.registerCommand('alertMeCmd', alertMeCmd, true)                
         //************        
 
-        var mapName = km.installKeyMap(buildEmacsyPlus(), 'emacsy_plus', 'macDefault');
+        var os = km.getOsPlatform();
+        var mapName = null;
+        if (os === 'Mac' || os === 'Linux') {
+            mapName = km.installKeyMap(buildEmacsyPlus(), 'emacsy_plus', 'macDefault');
+        } else {
+            mapName = km.installKeyMap(buildEmacsyPlus(), 'emacsy_plus', 'pcDefault');
+        }
         km.activateKeyMap(mapName);
         //********
         //alert('Activated ' + mapName);
@@ -181,6 +187,10 @@ function EmacsyPlus() {
         // rather than become available to getNextChar().
         // temporarily disable cnt-X in the keymap:
         
+        // NOTE: the suspent/restore bindings command is not working.
+        //       So Cnt-x Cnt-x will re-enter, rather then be made
+        //       available to the getNextChar() below. Needs fixing
+        //       in safeKeyMap.
         km.suspendKeyBinding('Ctrl-X');
         km.getNextChar(cm).then(function(cntXKey) {
             /*
@@ -213,14 +223,19 @@ function EmacsyPlus() {
            Save current selection (if any) in register. 
            Waits for following char as the register name.
         */
-        if (cm.somethingSelected()) {
-            var selectedTxt = cm.getSelection();
-            // Grab the next keystroke, which is
-            // the register name:
-            km.getNextChar(cm).then(function (regName) {
-                CodeMirror.emacsArea.registers[regName] = selectedTxt;
-            })
+
+        if (! cm.doc.somethingSelected()) {
+            // Nothing selected: grab region between mark and cursor:
+            cm.doc.setSelection(getMark(cm), cm.doc.getCursor());
         }
+        
+        var selectedTxt = cm.getSelection();
+        // Grab the next keystroke, which is
+        // the register name:
+        km.getNextChar(cm).then(function (regName) {
+            CodeMirror.emacsArea.registers[regName] = selectedTxt;
+            clearSelection(cm);
+        })
     }
 
     var insertFromRegCmd = function(cm) {
@@ -384,6 +399,10 @@ function EmacsyPlus() {
         var killedTxt = CodeMirror.emacsArea.killedTxt;
         insertTxt(cm, killedTxt);
         return false;
+    }
+
+    var clearSelection = function(cm) {
+        cm.doc.setSelection(cm.doc.getCursor(), cm.doc.getCursor());
     }
 
     /* ----------------------------  Call Constructor and Export Public Methods ---------- */

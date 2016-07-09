@@ -408,6 +408,28 @@ function SafeKeyMap() {
     }
 
     /*----------------------
+      | getOsPlatform
+      | ----------------- */
+
+    var getOsPlatform = function() {
+        /*
+          Best guess as to OS under the browser. Returns
+          Mac, Linux, Windows, or Unknown.
+         */
+
+        if (navigator.platform.indexOf('Mac') > -1) {
+            return 'Mac';
+        } else if (navigator.platform.indexOf('Linux') > -1) {
+            return 'Linux';
+        } else if (navigator.platform.indexOf('Win') > -1) {
+            return 'Windows';
+        } else {
+            return 'Unknown';
+        }
+    }
+
+
+    /*----------------------
       | copyKeyMap
       | ----------------- */
 
@@ -473,7 +495,8 @@ function SafeKeyMap() {
         setKeyBinding : setKeyBinding,
         deleteKeyBinding : deleteKeyBinding,
         suspendKeyBinding : suspendKeyBinding,
-        restoreKeyBinding : restoreKeyBinding
+        restoreKeyBinding : restoreKeyBinding,
+        getOsPlatform : getOsPlatform
         // copyKeyMap : copyKeyMap
     }
 } // end class Savedkeymaps
