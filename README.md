@@ -70,3 +70,7 @@ python setup.py install
 ```
 The use of setuptools maybe an abuse, since the code is purely JavaScript. But it's convenient.
 - While the code is all CodeMirror, it does assume the existence of a global variable CodeMirror. This variable is available in Jupyter 4.0.x notebooks, which is where the code was tested. The automatic installation assumes that Jupyter is installed. For other contexts a more manual installation is needed: The classes need to be loaded, and the CodeMirror variable must be created.
+
+###*Known Bugs*
+- In `suspendKeyBinding()` and `restoreKeyBinding()` methods in *SafeKeyMap* don't work. The bindings seem to get properly removed from the correct map, as well as restored. But the commands bound to the keys are still called. Maybe CodeMirror needs to be kicked to refresh some cash?
+- Because of the above bug, `Cnt-x Cnt-x` (exchange point/mark) can't be implemented as planned. The workaround in the current code is to bind the command to `Cnt-x Cnt-X` instead. Note the capitalization in the second keystroke. Once the first bug is fixed, this second one goes away.
