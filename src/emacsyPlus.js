@@ -24,6 +24,13 @@ function EmacsyPlus() {
         km.registerCommand('insertFromRegCmd', insertFromRegCmd, true)
         km.registerCommand('cancelCmd', cancelCmd, true)
         km.registerCommand('xchangePtMarkCmd', xchangePtMarkCmd, true)
+        //************
+        // For testing binding suspension:
+
+        //km.registerCommand('suspendTestCmd', suspendTestCmd, true)
+        //km.registerCommand('restoreTestCmd', restoreTestCmd, true)
+        //km.registerCommand('alertMeCmd', alertMeCmd, true)                
+        //************        
 
         var mapName = km.installKeyMap(buildEmacsyPlus(), 'emacsy_plus', 'macDefault');
         km.activateKeyMap(mapName);
@@ -92,7 +99,14 @@ function EmacsyPlus() {
         emacsyPlusMap['Ctrl-Right']   = "selNxtCharCmd";        
         emacsyPlusMap['Shift-Ctrl-Left']   = "selPrevWordCmd";
         emacsyPlusMap['Shift-Ctrl-Right']  = "selNxtWordCmd";
-        
+
+        //*******************
+        // For testing binding suspension:
+    
+        //emacsyPlusMap['Shift-X']  = "alertMeCmd";        
+        //emacsyPlusMap['Shift-H']  = "suspendTestCmd";
+        //emacsyPlusMap['Shift-I']  = "restoreTestCmd";
+        //*******************
         
         /*--------------- Cnt-X Keymap ------------*/
 
@@ -136,6 +150,21 @@ function EmacsyPlus() {
     }
 
     /*------------------------------- Commands for CodeMirror  -------------- */
+
+    //***********
+    // For testing binding suspension:
+    
+    var alertMeCmd = function(cm) {
+        alert('Did it');
+    }
+    var suspendTestCmd = function(cm) {
+        km.suspendKeyBinding('X');
+    }
+    var restoreTestCmd = function(cm) {
+        km.restoreKeyBinding('X');
+    }
+    
+    //***********    
 
     var ctrlXCmd = function(cm) {
         /* Handling the cnt-X family of keys. Called whenever Cntl-K
