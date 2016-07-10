@@ -301,7 +301,6 @@ function EmacsyPlus() {
         var word = cm.doc.getSelection();
         CodeMirror.emacsArea.killedTxt = word;
         cm.doc.replaceSelection("");        
-        cm.doc.setCursor(cur);
     }
 
     var selNxtCharCmd = function(cm) {
