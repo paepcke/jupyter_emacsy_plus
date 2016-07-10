@@ -5,6 +5,7 @@ function EmacsyPlus() {
     var emacsyPlusMap = {};
     var ctrlXMap = {};
     var mark = null;
+    var os = km.getOsPlatform();
 
     var constructor = function() {
     
@@ -32,7 +33,6 @@ function EmacsyPlus() {
         //km.registerCommand('alertMeCmd', alertMeCmd, true)                
         //************        
 
-        var os = km.getOsPlatform();
         var mapName = null;
         if (os === 'Mac' || os === 'Linux') {
             mapName = km.installKeyMap(buildEmacsyPlus(), 'emacsy_plus', 'macDefault');
@@ -73,6 +73,12 @@ function EmacsyPlus() {
         emacsyPlusMap['Ctrl-K'] = "killCmd";
         emacsyPlusMap['Ctrl-W'] = "killRegionCmd";
         emacsyPlusMap['Alt-W']  = "copyCmd";
+        if (os === 'Mac') {emacsyPlusMap['Cmd-W']  = "copyCmd"};
+        emacsyPlusMap['Ctrl-D'] = "delCharAfter";
+        emacsyPlusMap['Alt-D']  = "delWordAfterCmd";
+        if (os === 'Mac') {emacsyPlusMap['Cmd-D']  = "delWordAfterCmd"};
+        emacsyPlusMap['Ctrl-Backspace']  = "delWordBeforeCmd";        
+
         emacsyPlusMap['Ctrl-Y'] = "yankCmd";
 
         emacsyPlusMap['Ctrl-A'] = "goLineStart";
@@ -86,15 +92,12 @@ function EmacsyPlus() {
         emacsyPlusMap['Ctrl-F'] = "goCharRight";
         emacsyPlusMap['Right']  = "goCharRight";        
         emacsyPlusMap['Ctrl-V'] = "goPageUp";
-        //emacsyPlusMap['Cmd-V']  = "goPageDown";
-        //emacsyPlusMap['Cmd-B']  = "goWordLeft";
+        //emacsyPlusMap['Cmd-V']  = "goPageDown"; // Preserve for true sys clipboard access
+        //emacsyPlusMap['Cmd-B']  = "goWordLeft"; // Preserve for true sys clipboard access
         emacsyPlusMap['Alt-F']  = "goWordRight";
+        if (os === 'Mac') {emacsyPlusMap['Cmd-F']  = "goWordRight";};
         emacsyPlusMap['Shift-Alt-,']  = "goDocStart";
         emacsyPlusMap['Shift-Alt-.']  = "goDocEnd";
-
-        emacsyPlusMap['Ctrl-D'] = "delCharAfter";
-        emacsyPlusMap['Alt-D']  = "delWordAfterCmd";
-        emacsyPlusMap['Ctrl-Backspace']  = "delWordBeforeCmd";        
 
         emacsyPlusMap['Ctrl-T'] = "transposeChars";
         emacsyPlusMap['Ctrl-Space']  = "setMarkCmd";
@@ -289,8 +292,7 @@ function EmacsyPlus() {
         selNxtWordCmd(cm);
         var word = cm.doc.getSelection();
         CodeMirror.emacsArea.killedTxt = word;
-        cm.doc.setCursor(cur);
-        cm.execCommand('delWordAfter');
+        cm.doc.replaceSelection("");
     }
 
     var delWordBeforeCmd = function(cm) {
@@ -298,8 +300,8 @@ function EmacsyPlus() {
         selPrevWordCmd(cm);
         var word = cm.doc.getSelection();
         CodeMirror.emacsArea.killedTxt = word;
+        cm.doc.replaceSelection("");        
         cm.doc.setCursor(cur);
-        cm.execCommand('delWordBefore');
     }
 
     var selNxtCharCmd = function(cm) {

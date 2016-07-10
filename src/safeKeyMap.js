@@ -118,9 +118,10 @@ function SafeKeyMap() {
 
         // Remove all keystrokes to be handled in
         // in the new keymap from the old one:
-        for (var keyStroke in _thisKeyMap) {
-            if (keyStroke in newStrokes) {
-                _thisKeyMap.delete(keyStroke);
+        var tmpMap = copyKeyMap(_thisKeyMap);
+        for (var keyStroke in tmpMap) {
+            if (newStrokes.indexOf(keyStroke) > -1) {
+                delete _thisKeyMap[keyStroke];
             }
         }
 

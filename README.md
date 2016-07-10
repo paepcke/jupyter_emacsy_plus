@@ -1,9 +1,11 @@
 ##CodeMirror Keymap Management, and Enhanced Emacs Mode
 
-### *SafeKeyMap*
 Two classes that build on top of the CodeMirror version used in Jupyter 4.1.0. The first class, *SafeKeyMap*, allows installation of custom keymaps, (possibly) based on keymaps that already exist in CodeMirror.
 
 The second class, *EmacsyPlus* uses *SaveKeyMap* to implement a keymap that is closer to Emacs than CodeMirror's built-in *emacsy* map.
+
+### *SafeKeyMap*
+CodeMirror provides facilities for creating maps between keystroke names and commands to run when such a key is pressed. Included is the ability to define *fallthrough* maps that are consulted if the active keymap does not contain a just-pressed key.
 
 #####Advantage of using *SafeKeyMap* over doing the work directly:
 
@@ -85,6 +87,7 @@ python setup.py install
 The use of setuptools maybe an abuse, since the code is purely JavaScript. But it's convenient.
 - While the code is all CodeMirror, it does assume the existence of a global variable CodeMirror. This variable is available in Jupyter 4.0.x notebooks, which is where the code was tested. The automatic installation assumes that Jupyter is installed. For other contexts a more manual installation is needed: The classes need to be loaded, and the CodeMirror variable must be created.
 
-###*Known Bugs*
+###*Known Bugs or Limitations*
+- Some browsers' keyboard shortcuts are processed before CodeMirror receives keystrokes. Two common Emacs keys conflict with this pre-emption: Alt/Meta/Cmd-D, and Alt/Meta/Cmd-W. The former sets a bookmark for the currently visited page. The latter deletes the current browser tab. In Firefox you can install the MenuWizard add-on and disable/change those, or other interfering keys.
 - In `suspendKeyBinding()` and `restoreKeyBinding()` methods in *SafeKeyMap* don't work. The bindings seem to get properly removed from the correct map, as well as restored. But the commands bound to the keys are still called. Maybe CodeMirror needs to be kicked to refresh some cash?
 - Because of the above bug, `Cnt-x Cnt-x` (exchange point/mark) can't be implemented as planned. The workaround in the current code is to bind the command to `Cnt-x Cnt-X` instead. Note the capitalization in the second keystroke. Once the first bug is fixed, this second one goes away.
