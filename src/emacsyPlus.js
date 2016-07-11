@@ -1,3 +1,9 @@
+/* TODO:
+- Cnt-x 3: comment region
+- Shift-Cnt-x 3: uncomment region
+- Maybe: cursor movements after set mark: make selection; but shut
+  that off automatically 
+*/
 
 function EmacsyPlus() {
 
