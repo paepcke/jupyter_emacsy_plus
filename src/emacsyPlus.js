@@ -281,6 +281,43 @@ function EmacsyPlus() {
         cm.doc.setSelection(cm.doc.getCursor(), cm.doc.getCursor());
     }
 
+    var toHtml = function() {
+        /*
+          Calls SafeKeyMap instances toHtml() to get
+          an array of Command/Keystroke pairs. Then 
+          adds the ctr-x commands to the result. Returns
+          the combination.
+        */
+
+        // Get raw array of 2-tuples: cmdName/keystroke:
+        bindings = km.toTxt();
+        // Add the ctrl-X keys:
+        for (var cntXKey in ctrlXMap) {
+            if (ctrlXMap.hasOwnProperty(cntXKey)) {
+                bindings.push(['Ctrl-x ' + ctrlXMap[cntXKey], cntXKey]);
+            }
+        }
+        // Resort the bindings:
+        bindings.sort(
+            function(cmdVal1, cmdVal2) {
+                switch(cmdVal1[0] < cmdVal2[0]) {
+                case true:
+                    return -1;
+                    break;
+                case false:
+                    if (cmdVal1[0] === cmdVal2[0]) {
+                        return 0;
+                    } else {
+                        return 1;
+                    }
+                    break;
+                }
+            }
+        )
+        // Turn in html table:
+        return km.toHtml(bindings);
+    }
+
     /*------------------------------- Commands for CodeMirror  -------------- */
 
     //***********
@@ -577,6 +614,7 @@ function EmacsyPlus() {
     constructor();
 
     // There are no public instance variables or methods: 
-    return {}
+    return {toHtml : toHtml
+           }
 
 } // end class EmacsyPlus

@@ -45,7 +45,7 @@ function SafeKeyMap() {
 
             - Make a new entry newMapName in CodeMirror.keymap, whose value is newMap.
             - Make a copy E' of the existing map E, which is obtained from 
-              CodeMirror.keyMap[baseKeyMapName]. Error if the map does not exist.
+              CodeMirror.keyMap[_baseMapName]. Error if the map does not exist.
             - Name the keymap copy "<baseKeyMapName>_<newMapName>" and create a 
               property of that name in CodeMirror.keyMap with a value being the
               copy E'.
@@ -370,6 +370,105 @@ function SafeKeyMap() {
         }
     }
 
+    /*----------------------
+      | toHtml
+      | ----------------- */
+
+    var toHtml = function(cmdKeyArr, cssClass) {
+        /*
+          Given an array of 2-tuples, return
+          an HTML table string. The 2-tuples
+          are expected to be strings: [<commandName>, <keyName>]
+
+          :param cmdKeyArr: array of comandName-keystrokeName pairs.
+          :type cmdKeyArr: [[string, string]]
+          :param cssClass: optional css class name for the table.
+          :type cssClass: {string | undefined}
+          :returns HTML string of a table with a command name
+              and a keystroke column.
+          :rtype: string
+        */
+        if (typeof(cssClass) !== 'undefined') {
+            var htmlStr = `<table class="${cssClass}">`;
+        } else {
+            var htmlStr = '<table>';
+        }
+        htmlStr += '<tr><th>Command</th><th>Keystroke</th></tr>'
+        for (let binding of cmdKeyArr) {
+            htmlStr += `<row><td>${binding[0]}</td><td>${binding[1]}</td></tr>`
+        }
+        htmlStr += '</table>'
+        return htmlStr;
+    }
+
+    /*----------------------
+      | toTxt
+      | ----------------- */
+
+    var toTxt = function() {
+        /*
+          Returns array of 2-tuples: CommandName, keystroke.
+          Recursively collects all active keystrokes from 
+          fallthrough maps.
+         */
+        var keystrokeCmdArr = toTxtHelper(_thisKeyMap, []).resArr;
+        // Sort alphabetically:
+        keystrokeCmdArr.sort(
+            function(cmdVal1, cmdVal2) {
+                switch(cmdVal1[0] < cmdVal2[0]) {
+                case true:
+                    return -1;
+                    break;
+                case false:
+                    if (cmdVal1[0] === cmdVal2[0]) {
+                        return 0;
+                    } else {
+                        return 1;
+                    }
+                    break;
+                }
+            }
+        )
+        return keystrokeCmdArr;
+    }
+    
+    /*----------------------
+      | toTxtHelper
+      | ----------------- */
+
+    var toTxtHelper = function(keymap, resArr, alreadyProcessed) {
+
+        if (typeof(alreadyProcessed) === 'undefined') {
+            alreadyProcessed = [];
+        }
+
+        // Get array of all basemap [command,keystroke] pairs:
+        for (var keystroke in keymap) {
+            if (keymap.hasOwnProperty(keystroke) && (keystroke !== 'fallthrough')) {
+                resArr.push([keymap[keystroke], keystroke])
+            }
+        }
+        
+        // Recursively add the keystroke/cmds of keymaps in fallback:
+        var fallthroughMapNameArr = keymap['fallthrough'];
+        if (typeof(fallthroughMapNameArr) !== 'undefined') {
+            for (let fallthroughMapName of fallthroughMapNameArr) {
+                // Avoid infinite recursion:
+                if (alreadyProcessed.indexOf(fallthroughMapName) > -1) {
+                    continue;
+                } else {
+                    alreadyProcessed.push(fallthroughMapName);
+                }
+                var map = CodeMirror.keyMap[fallthroughMapName];
+                if (typeof(map) !== 'undefined') {
+                    resAndProcessed = toTxtHelper(map, resArr, alreadyProcessed)
+                    resArr = resAndProcessed.resArr;
+                    alreadyProcessed = resAndProcessed.alreadyProcessed;
+                }
+            }
+        }
+        return {resArr : resArr, alreadyProcessed : alreadyProcessed};
+    }
 
     /*----------------------
       | value
@@ -490,7 +589,9 @@ function SafeKeyMap() {
         deleteKeyBinding : deleteKeyBinding,
         suspendKeyBinding : suspendKeyBinding,
         restoreKeyBinding : restoreKeyBinding,
-        getOsPlatform : getOsPlatform
+        getOsPlatform : getOsPlatform,
+        toHtml : toHtml,
+        toTxt : toTxt
         // copyKeyMap : copyKeyMap
     }
 } // end class Savedkeymaps

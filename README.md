@@ -1,11 +1,21 @@
-##CodeMirror Keymap Management, and Enhanced Emacs Mode
+##Enhanced Emacs Mode for CodeMirror and Jupyter
 
 Two classes that build on top of the CodeMirror version used in Jupyter 4.1.0. The first class, *SafeKeyMap*, allows installation of custom keymaps, (possibly) based on keymaps that already exist in CodeMirror.
 
-The second class, *EmacsyPlus* uses *SaveKeyMap* to implement a keymap that is closer to Emacs than CodeMirror's built-in *emacsy* map.
+The second class, *EmacsyPlus* uses *SaveKeyMap* to implement an editing mode closer to Emacs than CodeMirror's built-in *emacsy* map.
+###*EmacsyPlus*
+
+*EmacsyPlus* creates a keymap closer to Emacs than the 'emacsy' map provided with CodeMirror. For instance the following are provided:
+
+- Named content registers
+- Named location registers
+- Single- and multi-line kills (cnt-k), which can then be yanked (cnt-y). 
+- Cnt-x [?]> commands are supported via a secondary keymap dispatch.
+- Key binding changes accomplished by changing a table, similar to what would happen in a .emacs file.
+
 
 ### *SafeKeyMap*
-CodeMirror provides facilities for creating maps between keystroke names and commands to run when such a key is pressed. Included is the ability to define *fallthrough* maps that are consulted if the active keymap does not contain a just-pressed key.
+CodeMirror provides facilities for creating maps between keystroke names and commands to run when such a key is pressed. Included is the ability to define *fallthrough* maps that are consulted if the active keymap does not contain a just-pressed key. However, a bit more work is required to use those features than might be ideal. This class builds on the CodeMirror facilities; EmacsyPlus is built using this class.
 
 #####Advantage of using *SafeKeyMap* over doing the work directly:
 
