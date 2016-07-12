@@ -1,8 +1,65 @@
 /* TODO:
-- Cnt-x 3: comment region
-- Shift-Cnt-x 3: uncomment region
 - Maybe: cursor movements after set mark: make selection; but shut
   that off automatically 
+- Connect c-x c-s with my Jupyter snapshot
+*/
+
+/*
+  Implements Emacs keybindings for CodeMirror editors.
+  To customize, modify buildEmacsyPlus.emacsyPlusMap
+  and buildEmacsyPlus.ctrlXMap.
+
+For reference, a few keyboard key names and codes:
+Linux:
+    ALT   : Alt:18
+    Ctrl  : Control:17
+    Shift : Shift:16
+  Capslock: CapsLock:20
+    Home  : Home:36
+    End   : End:35
+ PageUp   : PageUp:33
+PageDown  : PageDown:34
+  Windows : = OS:91    (Microsoft keyboard)
+ 
+MacBook (laptop keyboard Chrome):
+    CMD   : Meta:91
+    Option: Alt:18
+    Ctrl  : Control:17
+    Shift : Shift:16
+  Capslock: Alt:18
+    Home  : <not part of keyboard>
+    End   : <not part of keyboard>
+ PageUp   : <not part of keyboard>
+PageDown  : <not part of keyboard>
+    FN    : <not firing keydown event>
+   FN-<<  : F7/118
+   FN->>  : F9/120
+
+MacBook (laptop keyboard Firefox):
+    CMD   : Meta:224
+    Option: Alt:18
+    Ctrl  : Control:17
+    Shift : Shift:16
+  Capslock: Alt:18
+    Home  : <not part of keyboard>
+    End   : <not part of keyboard>
+ PageUp   : <not part of keyboard>
+PageDown  : <not part of keyboard>
+    FN    : <not firing keydown event>
+   FN-<<  : F7/118
+   FN->>  : F9/120
+
+MacBook through Synergy using Microsoft keyboard (server on Linux) (Firefox):
+    ALT   : Meta:91
+    Ctrl  : Control:17
+    Shift : Shift:16
+  Capslock: <not firing keydown event>
+    Home  : Home:36
+    End   : End:35
+ PageUp   : PageUp:33
+PageDown  : PageDown:34
+  Windows : = Alt/18    (Microsoft keyboard)
+
 */
 
 function EmacsyPlus() {
@@ -15,6 +72,15 @@ function EmacsyPlus() {
 
     var constructor = function() {
     
+        if (typeof(CodeMirror.emacsArea) === 'undefined') {
+            CodeMirror.emacsArea = {
+                killedTxt : "",
+                multiKillInProgress : false,
+                registers : {},
+                bookmarks : {}
+            }
+        }        
+
         km.registerCommand('ctrlXCmd', ctrlXCmd, true);  // true: ok to overwrite function
         km.registerCommand('killCmd', killCmd, true);
         km.registerCommand('killRegionCmd', killRegionCmd, true)        
@@ -31,6 +97,13 @@ function EmacsyPlus() {
         km.registerCommand('insertFromRegCmd', insertFromRegCmd, true)
         km.registerCommand('cancelCmd', cancelCmd, true)
         km.registerCommand('xchangePtMarkCmd', xchangePtMarkCmd, true)
+        km.registerCommand('pointToRegisterCmd', pointToRegisterCmd, true)
+        km.registerCommand('jumpToRegisterCmd', jumpToRegisterCmd, true)
+        km.registerCommand('goCellStartCmd', goCellStartCmd, true)
+        km.registerCommand('goCellEndCmd', goCellEndCmd, true)
+        km.registerCommand('goNotebookStartCmd', goNotebookStartCmd, true)
+        km.registerCommand('goNotebookEndCmd', goNotebookEndCmd, true)
+
         //************
         // For testing binding suspension:
 
@@ -74,6 +147,8 @@ function EmacsyPlus() {
         
         /*-------------- Emacs Keymap -------------*/
 
+        /* Killing and Yanking */
+
         emacsyPlusMap['Ctrl-X'] = "ctrlXCmd";  // cnt-x <?> --> processed further via ctrlXMap
 
         emacsyPlusMap['Ctrl-K'] = "killCmd";
@@ -86,6 +161,8 @@ function EmacsyPlus() {
         emacsyPlusMap['Ctrl-Backspace']  = "delWordBeforeCmd";        
 
         emacsyPlusMap['Ctrl-Y'] = "yankCmd";
+
+        /* Cursor motion */
 
         emacsyPlusMap['Ctrl-A'] = "goLineStart";
         emacsyPlusMap['Ctrl-E'] = "goLineEnd";
@@ -102,14 +179,27 @@ function EmacsyPlus() {
         //emacsyPlusMap['Cmd-B']  = "goWordLeft"; // Preserve for true sys clipboard access
         emacsyPlusMap['Alt-F']  = "goWordRight";
         if (os === 'Mac') {emacsyPlusMap['Cmd-F']  = "goWordRight";};
-        emacsyPlusMap['Shift-Alt-,']  = "goDocStart";
-        emacsyPlusMap['Shift-Alt-.']  = "goDocEnd";
+
+        emacsyPlusMap['Shift-Ctrl-,'] = 'goCellStartCmd';  // Ctrl-<
+        emacsyPlusMap['Shift-Ctrl-.'] = 'goCellEndCmd';    // Ctrl->
+        emacsyPlusMap['Home']         = 'goCellStartCmd';
+        emacsyPlusMap['End']          = 'goCellEndCmd';
+
+        if (os === 'Mac') {
+            emacsyPlusMap['Cmd-Up']       = 'goNotebookStartCmd';
+            emacsyPlusMap['Cmd-Down']     = 'goNotebookEndCmd';
+        } else {
+            emacsyPlusMap['Alt-Up']       = 'goNotebookStartCmd';
+            emacsyPlusMap['Alt-Down']     = 'goNotebookEndCmd';
+        }
+        
 
         emacsyPlusMap['Ctrl-T'] = "transposeChars";
         emacsyPlusMap['Ctrl-Space']  = "setMarkCmd";
 
         emacsyPlusMap['Ctrl-G']  = "cancelCmd";
 
+        /* Selections */
         emacsyPlusMap['Ctrl-Left']    = "selPrevCharCmd";
         emacsyPlusMap['Ctrl-Right']   = "selNxtCharCmd";        
         emacsyPlusMap['Shift-Ctrl-Left']   = "selPrevWordCmd";
@@ -129,10 +219,14 @@ function EmacsyPlus() {
         ctrlXMap['x'] = "saveToRegCmd";
         ctrlXMap['g'] = "insertFromRegCmd";
         ctrlXMap['u'] = "undo";
+        ctrlXMap['/'] = "pointToRegisterCmd";
+        ctrlXMap['j'] = "jumpToRegisterCmd";
         ctrlXMap['Ctrl-X'] = "xchangePtMarkCmd"; // NOTE: Cnt-x Cnt-X (2nd must be caps)
 
         return emacsyPlusMap;
     }
+
+    /* ------------------ Utilities ----------------- */
 
     var insertTxt = function(cm, txt) {
         /* Inserts text in a CodeMirror editor at cursor 
@@ -164,10 +258,33 @@ function EmacsyPlus() {
         }
     }
 
+    var getCm = function(cell) {
+        /*
+          Returns the CodeMirror editor instance of
+          a Jupyter cell. If cell is provided then
+          that cell's editor is returned. Else the
+          editor of the currently selected cell is
+          returned.
+
+          :param cell: optionally the cell whose CodeMirror editor instance is to be returned.
+          :type cell: {JupyterCell | undefined}
+          :returns the cell's CodeMirror instance
+          :rtype CodeMirror
+         */
+        if (typeof(cell) === 'undefined') {
+            cell = Jupyter.notebook.get_selected_cell();
+        }
+        return cell.code_mirror;
+    }
+
+    var clearSelection = function(cm) {
+        cm.doc.setSelection(cm.doc.getCursor(), cm.doc.getCursor());
+    }
+
     /*------------------------------- Commands for CodeMirror  -------------- */
 
     //***********
-    // For testing binding suspension:
+    // For testing binding suspension, which isn't working yet:
     
     var alertMeCmd = function(cm) {
         alert('Did it');
@@ -260,6 +377,34 @@ function EmacsyPlus() {
             insertTxt(cm, CodeMirror.emacsArea.registers[regName]);
         })
     }
+
+    var pointToRegisterCmd = function(cm) {
+        var focusedCell = Jupyter.notebook.get_selected_cell();
+        var bookmark = cm.doc.setBookmark(cm.doc.getCursor());
+        // Grab the next keystroke, which is
+        // the register name:
+        km.getNextChar(cm).then(function (regName) {
+            CodeMirror.emacsArea.bookmarks[regName] = {cell : focusedCell, bookmark : bookmark}
+        })
+    }
+
+    var jumpToRegisterCmd = function(cm) {
+        // Get bookmark-register name:
+        km.getNextChar(cm).then(function (regName) {
+            var cellBm = CodeMirror.emacsArea.bookmarks[regName]
+            if (typeof(cellBm) === 'undefined') {
+                return
+            }
+            var cell   = cellBm.cell;
+            var bm     = cellBm.bookmark;
+            // Get that cell's CodeMirror editor instance:
+            newCm = getCm(cell);
+            // Change focus to bookmark-cell:
+            newCm.focus();
+            newCm.doc.setCursor(bm.find());
+        })
+    }
+
 
     var copyCmd = function(cm) {
         /*
@@ -408,9 +553,24 @@ function EmacsyPlus() {
         return false;
     }
 
-    var clearSelection = function(cm) {
-        cm.doc.setSelection(cm.doc.getCursor(), cm.doc.getCursor());
+    var goCellStartCmd = function(cm) {
+        cm.doc.setCursor({line : 0, ch : 0});
     }
+
+    var goCellEndCmd = function(cm) {
+        var lastLine = cm.getLine(cm.doc.lastLine())
+        cm.doc.setCursor({line : cm.doc.lineCount(), ch : lastLine.length-1});
+    }
+
+    var goNotebookStartCmd = function(cm) {
+        getCm(Jupyter.notebook.get_cells()[0]).focus();
+    }
+
+    var goNotebookEndCmd = function(cm) {
+        // array.slice(-1)[0] returns last element:
+        getCm(Jupyter.notebook.get_cells().slice(-1)[0]).focus();
+    }
+    
 
     /* ----------------------------  Call Constructor and Export Public Methods ---------- */
 

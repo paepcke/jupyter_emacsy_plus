@@ -14,14 +14,7 @@ function SafeKeyMap() {
       | ----------------- */
 
     var constructor = function() {
-        
-        if (typeof(CodeMirror.emacsArea) === 'undefined') {
-            CodeMirror.emacsArea = {
-                killedTxt : "",
-                multiKillInProgress : false,
-                registers : {}
-            }
-        }        
+        // nothing for now.
     }
     
     /*----------------------

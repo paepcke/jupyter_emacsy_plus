@@ -38,10 +38,12 @@ if not os.path.exists(extension_dir):
 # if that directive does not already exist there:
 
 try:  
-  with open(custom_js_path, 'a+') as fd:
+  with open(custom_js_path, 'r') as fd:
     customizations = fd.read();
-    if customizations.find(load_str) == -1:
-      print('Adding JavaScript load directive to %s' % custom_js_path)
+  
+  if customizations.find(load_str) == -1:
+    print('Adding JavaScript load directive to %s' % custom_js_path)
+    with open(custom_js_path, 'r') as fd:    
       fd.write(load_str)
 except IOError as e:
   print("Cannot add JavaScript load directive to Jupyter's custom.js file. Aborting. (%s)" % `e`, file=sys.stderr)
