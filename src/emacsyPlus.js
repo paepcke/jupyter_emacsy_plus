@@ -9,6 +9,16 @@
   To customize, modify buildEmacsyPlus.emacsyPlusMap
   and buildEmacsyPlus.ctrlXMap.
 
+Warning: both Firefox and Chrome have Alt/Cmd-w bound to
+'Close tab.' You'll want to disable those bindings if you 
+want to use the normal Emacs yank command (which is in
+effect with this mode, but shadowed by the browser.)
+For Chrome on Mac: Use System Preferences-->Keyboard-->AppShortcuts
+to bind Cmd-W to something else, like F2. 
+
+In Firefox on Linux I used the MenuWizard extension.
+
+
 For reference, a few keyboard key names and codes:
 Linux:
     ALT   : Alt:18
@@ -64,6 +74,8 @@ PageDown  : PageDown:34
 
 function EmacsyPlus() {
 
+    /* Singleton class */
+
     var km = new SafeKeyMap();
     var emacsyPlusMap = {};
     var ctrlXMap = {};
@@ -72,6 +84,10 @@ function EmacsyPlus() {
 
     var constructor = function() {
     
+        if (typeof(EmacsyPlus.instance) !== 'undefined') {
+            return EmacsyPlus.instance;
+        }
+
         if (typeof(CodeMirror.emacsArea) === 'undefined') {
             CodeMirror.emacsArea = {
                 killedTxt : "",
@@ -103,6 +119,7 @@ function EmacsyPlus() {
         km.registerCommand('goCellEndCmd', goCellEndCmd, true)
         km.registerCommand('goNotebookStartCmd', goNotebookStartCmd, true)
         km.registerCommand('goNotebookEndCmd', goNotebookEndCmd, true)
+        km.registerCommand('helpCmd', helpCmd, true)        
 
         //************
         // For testing binding suspension:
@@ -119,10 +136,16 @@ function EmacsyPlus() {
             mapName = km.installKeyMap(buildEmacsyPlus(), 'emacsy_plus', 'pcDefault');
         }
         km.activateKeyMap(mapName);
+
+        // Instances have only public methods:
+        EmacsyPlus.instance =
+            {help : helpCmd
+            }
+
         //********
         //alert('Activated ' + mapName);
         //********        
-
+        return EmacsyPlus.instance;
     }
     
     /*------------------------------- Build/Install/Activate the Emacsy-Plus Keymap Object  -------------- */    
@@ -146,6 +169,11 @@ function EmacsyPlus() {
          */
         
         /*-------------- Emacs Keymap -------------*/
+
+        
+        /* Help */
+
+        emacsyPlusMap['F1'] = "helpCmd";
 
         /* Killing and Yanking */
 
@@ -294,10 +322,14 @@ function EmacsyPlus() {
         // Add the ctrl-X keys:
         for (var cntXKey in ctrlXMap) {
             if (ctrlXMap.hasOwnProperty(cntXKey)) {
-                bindings.push(['Ctrl-x ' + ctrlXMap[cntXKey], cntXKey]);
+                bindings.push([ctrlXMap[cntXKey], `Ctrl-x ${cntXKey}`]);
             }
         }
-        // Resort the bindings:
+        // I don't know where Ctrl-/ is set (to comment-region),
+        // but it is...somewhere:
+        bindings.push(['commentRegion', 'Ctrl-/'])
+        
+        // Re-sort the bindings:
         bindings.sort(
             function(cmdVal1, cmdVal2) {
                 switch(cmdVal1[0] < cmdVal2[0]) {
@@ -314,8 +346,15 @@ function EmacsyPlus() {
                 }
             }
         )
-        // Turn in html table:
-        return km.toHtml(bindings);
+        // Turn into html table:
+        var tableHtml = km.toHtml(bindings);
+        var htmlPage = `<html><head><style>table, th, td {
+            border: 1px solid black;
+            border-collapse : collapse;
+            padding : 4px;
+            background-color : LightBlue;
+        }</style><body><h1>EmacsyPlus Bindings</h2>${tableHtml}</body></html>`;
+        return htmlPage;
     }
 
     /*------------------------------- Commands for CodeMirror  -------------- */
@@ -334,6 +373,15 @@ function EmacsyPlus() {
     }
     
     //***********    
+
+    var helpCmd = function(cm) {
+        /*
+          Pops up window with key bindings.
+        */
+        
+        var wnd = window.open('about:blank', 'Emacs Help', 'width=400,height=200,scrollbars=yes');
+        wnd.document.write(toHtml());
+    }
 
     var ctrlXCmd = function(cm) {
         /* Handling the cnt-X family of keys. Called whenever Cntl-K
@@ -611,10 +659,7 @@ function EmacsyPlus() {
 
     /* ----------------------------  Call Constructor and Export Public Methods ---------- */
 
-    constructor();
+    return constructor();
 
-    // There are no public instance variables or methods: 
-    return {toHtml : toHtml
-           }
 
 } // end class EmacsyPlus
