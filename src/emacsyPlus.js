@@ -82,6 +82,9 @@ function EmacsyPlus() {
     var mark = null;
     var os = km.getOsPlatform();
 
+    var mBufName = 'minibuffer';
+    var backspaceCode = 8;
+
     var constructor = function() {
     
         if (typeof(EmacsyPlus.instance) !== 'undefined') {
@@ -696,8 +699,90 @@ function EmacsyPlus() {
     }
     
     var isearchForwardCmd = function(cm) {
-        cm.execCommand('findNext');
+        //window.find();
+        var mBuf = monitorMiniBuf(incSearchHandler)
     }
+
+    /* ----------- Incremental Search -------------*/
+
+    var incSearchHandler =  function(evt) {
+        // *** this is miniBuf obj ****
+        // monitorMiniBuf added minibuffer to
+        // this function as a property:
+        var mBuf = this
+        var bufVal = mBuf.value;
+        //****mBuf.focus();
+        //****Jupyter.notebook.edit_mode();
+        if (evt.which === backspaceCode) {
+            mBuf.value = bufVal.slice(0,-1);
+        } else {
+            mBuf.value = bufVal + evt.key;
+        }
+        evt.preventDefault();
+    }
+
+    var addMiniBuf = function(cell) {
+        var cell = ensureCell(cell);
+        // Get input area of cell:
+        var cellDiv = getCellDomEl(cell);
+        var miniBuf = document.createElement('input');
+        miniBuf.type = 'text';
+        cell[mBufName] = miniBuf;
+        cellDiv.appendChild(miniBuf);
+        return miniBuf;
+    }
+
+    var removeMiniBuf = function(cell) {
+        var cell = ensureCell(cell);
+        var miniBuf = cell[mBufName];
+        var miniBufContent = miniBuf.value;
+        miniBuf.parentElement.removeChild(miniBuf);
+        return miniBufContent;
+    }
+
+    var monitorMiniBuf = function(callback, cell) {
+        var cell = ensureCell(cell);
+        var miniBuf = getMiniBufFromCell(cell);
+        if (typeof(miniBuf) === 'undefined') {
+            miniBuf = addMiniBuf(cell);
+        }
+        getCellDomEl(cell).addEventListener("keydown", function(evt) {
+            // Call the callback with minibuffer object
+            // bound to 'this':
+            callback.call(miniBuf, evt);
+        });
+        return miniBuf;
+    }
+
+    var stopMonitorMiniBuf = function(cell, callback) {
+        var cell = ensureCell(cell);
+        miniBuf.removeEventListener("keypress", callback);
+        return miniBuf;
+    }
+
+    var getMiniBufFromCell = function(cell) {
+        var cell = ensureCell(cell);
+        var allMBufs = document.getElementsByName(mBufName);
+        for (let el of getCellDomEl(cell).children) {
+            if (el.name === mBufName) {
+                return el;
+            }
+        }
+        return undefined;
+    }
+
+    var getCellDomEl = function(cell) {
+        var cell = ensureCell(cell);
+        return cell.element[0];
+    }
+
+    var ensureCell = function(cell) {
+        if (typeof(cell) === 'undefined') {
+            cell = Jupyter.notebook.get_selected_cell();
+        }
+        return cell;
+    }
+    
 
 
     /* ----------------------------  Call Constructor and Export Public Methods ---------- */
