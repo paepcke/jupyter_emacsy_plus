@@ -214,6 +214,46 @@ function SafeKeyMap() {
     }
 
     /*----------------------
+      | deleteParentCmdBinding
+      | ----------------- */
+
+    var deleteParentCmdBinding = function(cmdName) {
+        /*
+          Remove all bindings for a given command name from 
+          the base keymap. See also deleteParentKeyBinding().
+
+          :param cmdName: name of command, such as goDocEnd.
+          :type cmdName: string
+         */
+
+        // Keymap map keystroke-->cmdName. So we need
+        // to find the binding. Use a copy to iterate
+        // over, b/c we will modify _thisKeyMap:
+        var tmpMap = copyKeyMap(_thisKeyMap);
+        for (var keystroke in tmpMap) {
+            if (tmpMap[keystroke] === cmdName) {
+                delete _thisKeyMap[keyStroke];
+            }
+        }
+    }
+
+    /*----------------------
+      | deleteParentKeyBinding
+      | ----------------- */
+
+    var deleteParentKeyBinding = function(keyName) {
+        /*
+          Remove the binding of the given key name from
+          the base keymap. See also deleteParentCmdBinding().
+
+          :param keyName: name of keystroke, such as Ctrl-D
+          :type keyName: string
+         */
+
+        delete _thisKeyMap[keyName];
+    }
+
+    /*----------------------
       | cmdFromName
       | ----------------- */
 
@@ -582,6 +622,8 @@ function SafeKeyMap() {
         activateKeyMap : activateKeyMap,
         deactivateKeyMap : deactivateKeyMap,
         registerCommand : registerCommand,
+        deleteParentCmdBinding : deleteParentCmdBinding,
+        deleteParentKeyBinding : deleteParentKeyBinding,        
         cmdFromName : cmdFromName,
         getNextChar : getNextChar,
         getKeyBinding : getKeyBinding,

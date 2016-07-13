@@ -120,6 +120,7 @@ function EmacsyPlus() {
         km.registerCommand('goNotebookStartCmd', goNotebookStartCmd, true)
         km.registerCommand('goNotebookEndCmd', goNotebookEndCmd, true)
         km.registerCommand('openLineCmd', openLineCmd, true)
+        km.registerCommand('isearchForwardCmd', isearchForwardCmd, true)        
         km.registerCommand('helpCmd', helpCmd, true)
         
 
@@ -139,7 +140,23 @@ function EmacsyPlus() {
         }
         km.activateKeyMap(mapName);
 
-        // Instances have only public methods:
+        // A couple of commands in CodeMirror's default Mac keymap
+        // conflict with standard OSX-level commands. Take those out
+        // of the basemap so they don't even show up in the keybindings
+        // help window:
+
+        if (os === 'Mac') {
+            // On Macs these two show windows on the desktop in reduced size,
+            // and vice versa:
+            km.deleteParentKeyBinding('Ctrl-Up');    // bound to goDocEnd
+            km.deleteParentKeyBinding('Ctrl-Down');  // bound to goDocStart
+
+            km.deleteParentKeyBinding('Ctrl-Alt-Backspace') // does nothing
+            km.deleteParentKeyBinding('Home')
+            km.deleteParentKeyBinding('End');
+        }
+        
+        // Instances of this EmacsyPlus class have only public methods:
         EmacsyPlus.instance =
             {help : helpCmd
             }
@@ -206,35 +223,41 @@ function EmacsyPlus() {
         emacsyPlusMap['Ctrl-F'] = "goCharRight";
         emacsyPlusMap['Right']  = "goCharRight";        
         emacsyPlusMap['Ctrl-V'] = "goPageUp";
+
         //emacsyPlusMap['Cmd-V']  = "goPageDown"; // Preserve for true sys clipboard access
         //emacsyPlusMap['Cmd-B']  = "goWordLeft"; // Preserve for true sys clipboard access
+
         emacsyPlusMap['Alt-F']  = "goWordRight";
         if (os === 'Mac') {emacsyPlusMap['Cmd-F']  = "goWordRight";};
 
-        emacsyPlusMap['Shift-Ctrl-,'] = 'goCellStartCmd';  // Ctrl-<
-        emacsyPlusMap['Shift-Ctrl-.'] = 'goCellEndCmd';    // Ctrl->
-        emacsyPlusMap['Home']         = 'goCellStartCmd';
-        emacsyPlusMap['End']          = 'goCellEndCmd';
+        emacsyPlusMap['Shift-Ctrl-,']      = 'goCellStartCmd';  // Ctrl-<
+        emacsyPlusMap['Shift-Ctrl-.']      = 'goCellEndCmd';    // Ctrl->
+        emacsyPlusMap['Home']              = 'goCellStartCmd';
+        emacsyPlusMap['End']               = 'goCellEndCmd';
 
         if (os === 'Mac') {
-            emacsyPlusMap['Cmd-Up']       = 'goNotebookStartCmd';
-            emacsyPlusMap['Cmd-Down']     = 'goNotebookEndCmd';
+            emacsyPlusMap['Cmd-Up']        = 'goNotebookStartCmd';
+            emacsyPlusMap['Cmd-Down']      = 'goNotebookEndCmd';
         } else {
-            emacsyPlusMap['Alt-Up']       = 'goNotebookStartCmd';
-            emacsyPlusMap['Alt-Down']     = 'goNotebookEndCmd';
+            emacsyPlusMap['Alt-Up']        = 'goNotebookStartCmd';
+            emacsyPlusMap['Alt-Down']      = 'goNotebookEndCmd';
         }
         
 
-        emacsyPlusMap['Ctrl-T'] = "transposeChars";
-        emacsyPlusMap['Ctrl-Space']  = "setMarkCmd";
+        emacsyPlusMap['Ctrl-T']            = "transposeChars";
+        emacsyPlusMap['Ctrl-Space']        = "setMarkCmd";
 
-        emacsyPlusMap['Ctrl-G']  = "cancelCmd";
+        emacsyPlusMap['Ctrl-G']            = "cancelCmd";
 
         /* Selections */
-        emacsyPlusMap['Ctrl-Left']    = "selPrevCharCmd";
-        emacsyPlusMap['Ctrl-Right']   = "selNxtCharCmd";        
+        emacsyPlusMap['Ctrl-Left']         = "selPrevCharCmd";
+        emacsyPlusMap['Ctrl-Right']        = "selNxtCharCmd";        
         emacsyPlusMap['Shift-Ctrl-Left']   = "selPrevWordCmd";
         emacsyPlusMap['Shift-Ctrl-Right']  = "selNxtWordCmd";
+
+        /* Searching */
+        emacsyPlusMap['Ctrl-S']            = "isearchForwardCmd";
+        emacsyPlusMap['Ctrl-R']            = "findPrev";
 
         //*******************
         // For testing binding suspension:
@@ -384,7 +407,7 @@ function EmacsyPlus() {
           Pops up window with key bindings.
         */
         
-        var wnd = window.open('about:blank', 'Emacs Help', 'width=400,height=200,scrollbars=yes');
+        var wnd = window.open('about:blank', 'Emacs Help', 'width=400,height=500,scrollbars=yes');
         wnd.document.write(toHtml());
     }
 
@@ -672,6 +695,10 @@ function EmacsyPlus() {
         getCm(Jupyter.notebook.get_cells().slice(-1)[0]).focus();
     }
     
+    var isearchForwardCmd = function(cm) {
+        cm.execCommand('findNext');
+    }
+
 
     /* ----------------------------  Call Constructor and Export Public Methods ---------- */
 
