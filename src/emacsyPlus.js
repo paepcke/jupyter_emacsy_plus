@@ -119,7 +119,9 @@ function EmacsyPlus() {
         km.registerCommand('goCellEndCmd', goCellEndCmd, true)
         km.registerCommand('goNotebookStartCmd', goNotebookStartCmd, true)
         km.registerCommand('goNotebookEndCmd', goNotebookEndCmd, true)
-        km.registerCommand('helpCmd', helpCmd, true)        
+        km.registerCommand('openLineCmd', openLineCmd, true)
+        km.registerCommand('helpCmd', helpCmd, true)
+        
 
         //************
         // For testing binding suspension:
@@ -189,6 +191,7 @@ function EmacsyPlus() {
         emacsyPlusMap['Ctrl-Backspace']  = "delWordBeforeCmd";        
 
         emacsyPlusMap['Ctrl-Y'] = "yankCmd";
+        emacsyPlusMap['Ctrl-O'] = "openLineCmd";
 
         /* Cursor motion */
 
@@ -267,7 +270,9 @@ function EmacsyPlus() {
         */
         
         var cursor = cm.doc.getCursor();
-        cm.doc.replaceRange(txt, cursor);
+        // Copy cursor so as not to disrupt selections:
+        var pos = {line : cursor.line, ch : cursor.ch}
+        cm.doc.replaceRange(txt, pos);
     }
 
     var multiKillCheck = function(cm, keystroke, event) {
@@ -446,6 +451,7 @@ function EmacsyPlus() {
         km.getNextChar(cm).then(function (regName) {
             CodeMirror.emacsArea.registers[regName] = selectedTxt;
             clearSelection(cm);
+            cm.doc.setExtending(false);
         })
     }
 
@@ -490,6 +496,12 @@ function EmacsyPlus() {
         })
     }
 
+    var openLineCmd = function(cm) {
+        var cursor = cm.doc.getCursor();
+        var newCursor = {line : cursor.line, ch : cursor.ch}
+        insertTxt(cm, '\n');
+        cm.doc.setCursor(newCursor);
+    }
 
     var copyCmd = function(cm) {
         /*
@@ -502,11 +514,15 @@ function EmacsyPlus() {
         if (cm.somethingSelected()) {
             var selectedTxt = cm.getSelection();
             CodeMirror.emacsArea.killedTxt = selectedTxt;
+            cm.doc.setExtending(false);
+            clearSelection(cm);
         }
     }
 
     var setMarkCmd = function(cm) {
         mark = cm.doc.getCursor();
+        clearSelection(cm);
+        cm.doc.setExtending(true);
     }
 
     var getMark = function(cm) {
