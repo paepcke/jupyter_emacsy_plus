@@ -972,29 +972,49 @@ function EmacsyPlus() {
 
     iSearch = function(searchTxt) {
         var cells = Jupyter.notebook.get_cells();
-        var prevPlace = {cellIndx : 0, 
-                         inOutput : false,
-                         selection : {anchor : {line : 0, ch : 0},
-                                      head   : {line : 0, ch : 0}
-                                     }
-                        }
-        var curPlace = {cellIndx : 0, 
-                        inOutput : false,
-                        selection : {anchor : {line : 0, ch : 0},
-                                     head   : {line : 0, ch : 0}
-                                    }
-                       }
 
+        // For saving positions in notebook where
+        // a previous match occurred during iSearch.
+        // I.e. matches of fewer letters in the
+        // minibuffer than entered up to a given point:
+        var placeStack  = [];
+
+        var createPlace = function() {
+            return {cellIndx : 0, 
+                    inOutput : false,
+                    searchStart : 0,
+                    selection : {anchor : {line : 0, ch : 0},
+                                 head   : {line : 0, ch : 0}
+                                }
+                   }
+        }
+
+        var initialCell  = Jupyter.notebook.get_selected_cell();
+        var initialPlace = createPlace();
+        initialPlace.cellIndx = Jupyter.notebook.find_cell_index(initialCell);
+        initialPlace.selection.cursor = initialCell.code_mirror.doc.getCursor();
+
+        // Place in notebook; inits to start of book:
+        var curPlace = createPlace();
+        
         var copySel = function(src, dst) {
             dst.line = src.line;
             dst.ch   = src.ch;
         }
 
-        var copyPlace = function(src, dst) {
-            dst.cellIndx = src.cellIndx;
-            dst.inOutput = src.inOutput;
+        var copyPlace = function(src) {
+            /*
+              Returns the copy of a place.
+            */
+
+            var dst = createPlace();
+            
+            dst.cellIndx    = src.cellIndx;
+            dst.inOutput    = src.inOutput;
+            dst.searchStart = src.searchStart;
             copySel(src.selection.anchor, dst.selection.anchor);
             copySel(src.selection.head, dst.selection.head);
+            return dst;
         }
 
 
@@ -1042,9 +1062,67 @@ function EmacsyPlus() {
             return {line : lineIndx, ch : inLineOffset};
         }
 
-        var searchStart = 0;
+        var pushPlace = function(place) {
+            /*
+              Make copy of a place, and push it onto place stack.
+            */
+            placeStack.push(copyPlace(place));
+        }
+
+        var popPlace = function() {
+            /*
+              Pops most recent place off the stack and returns it.
+              If stack empty, returns a start of notebook for a place.
+            */
+            if (placeStack.length === 0) {
+                return createPlace();
+            }
+            return placeStack.pop();
+        }
+
+        var goPrevMatch = function(howFar) {
+            /* 
+               Have the next call to next() go back
+               to a previous selection, one that was
+               valid for a shorter search string than
+               the most recent.
+
+               :param howFar: if provided, number of
+               previous selections to go back to.
+               Default: 1
+               :type howFar: integer
+            */
+
+            // Note that stack will be empty if next() was
+            // never called or no match was ever found. Or
+            // the *currently* selected place in the notebook
+            // will be at top of stack.
+            if (typeof(howFar) === 'undefined') {
+                howFar = 1;
+            } else if (howFar > placeStack.length) {
+                howFar = placeStack.length;
+            } else if (howFar < 1) {
+                throw `Prev-match rollback must be a positive int. Was ${howFar}`;
+            }
+            // Pop all but the last of the number of
+            // requested place frame pops:
+            for (let i=0; i<howFar-1; i++) {
+                popPlace();
+            }
+            // Last pop is the one caller wants:
+            curPlace = popPlace();
+            return curPlace;
+        }
+        
         return {
             next : function() {
+                // Get where we are (recall: pop of empty stack returns
+                // start of notebook):
+                curPlace = popPlace();
+                // Save current selection place back onto
+                // the place stack.
+                pushPlace(curPlace);
+
                 for (let i=curPlace.cellIndx; i<cells.length; i++) {
                     curPlace.cellIndx = i;
                     var cell = cells[i];
@@ -1053,33 +1131,57 @@ function EmacsyPlus() {
                     var re  = new RegExp(searchTxt, 'i'); // ignore case
                     // Find as many matches in this cell as we can:
                     while (true) {
-                        var res = txt.slice(searchStart).search(re);
+                        var res = txt.slice(curPlace.searchStart).search(re);
                         if (res === -1) {
                             nullTheSelection(curPlace);
-                            searchStart = 0;
                             break; // next cell
                         }
-                        // Got a match. Get line and chr within cell.
+
+                        // Got a match:
+
+                        // Get line and chr within cell.
                         // Remember: the search was not from start of
                         // cell, but from end of selection. Correct
                         // for this offset:
-                        var selStart = lineChIndx(txt,res + searchStart);
+                        var selStart = lineChIndx(txt,res + curPlace.searchStart);
 
                         // In the all-in-one cell string we are now
                         // at where search started this time (searchStart),
                         // plus result of the search, plus length of
                         // search word, which we will select below:
-                        searchStart += res + searchTxt.length;
-                        copyPlace(curPlace, prevPlace);
+                        curPlace.searchStart += res + searchTxt.length;
                         copySel(selStart, curPlace.selection.anchor);
-                        
                         curPlace.selection.head.line = selStart.line;
                         curPlace.selection.head.ch = selStart.ch + searchTxt.length;
+                        // Save this newest (i.e. current) position:
+                        pushPlace(curPlace);
+                        
                         clearSelection(cm);
                         cm.doc.setSelection(curPlace.selection.anchor, curPlace.selection.head);
                         return curPlace;
                     }
                 }
+            },
+
+            addChar : function(chr) {
+                searchTxt += chr;
+                goPrevMatch();
+                this.next();
+            },
+            
+            chopChar : function() {
+                searchTxt = searchTxt.slice(0, searchTxt.length-1);
+                goPrevMatch();
+                if (searchTxt.length === 0){
+                    clearSelection(cells[curPlace.cellIndx].code_mirror);
+                    // Return to initial position:
+                    pushPlace(initialPlace);
+                }
+                this.next();
+            },
+
+            searchTerm : function() {
+                return searchTxt;
             }
         }
     }
