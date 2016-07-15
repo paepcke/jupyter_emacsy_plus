@@ -72,9 +72,16 @@ PageDown  : PageDown:34
 
 */
 
+/* -------------------------  Class EmacsyPlus --------------- */
+
 function EmacsyPlus() {
 
     /* Singleton class */
+
+    var BACK_SEARCH = true;
+    var FORW_SEARCH = false;
+    var CASE_SENSITIVE = true;
+    var CASE_INSENSITIVE = false;
 
     var km = new SafeKeyMap();
     var emacsyPlusMap = {};
@@ -84,7 +91,10 @@ function EmacsyPlus() {
     var ctrlInProgress = false;
 
     var mBufName   = 'minibuffer';
+    var iSearcher  = null;
     var savedPlace = undefined;
+
+    var mBufKeyListener = null;
 
     var bsCode    = 8;   // backspace
     var enterCode = 13;
@@ -167,8 +177,7 @@ function EmacsyPlus() {
         
         // Instances of this EmacsyPlus class have only public methods:
         EmacsyPlus.instance =
-            {help : helpCmd,
-             iSearch : iSearch  //***** take out.
+            {help : helpCmd
             }
 
         //********
@@ -710,21 +719,20 @@ function EmacsyPlus() {
         //window.find();
         var cur = cm.doc.getCursor();
         savedPlace = {cm : cm, line : cur.line, ch : cur.ch};
-        var mBuf = monitorMiniBuf(incSearchHandler)
+        // This ISearcher instance will be search from
+        // the current position. The keydown interrupt
+        // service routing iSearchHandler will add or
+        // remove letters.
+        iSearcher  = ISearcher();
+
+        // Present the minibuffer, get focus to it,
+        // and behave isearchy via the iSearchHandler:
+        var mBuf = monitorMiniBuf(iSearchHandler)
     }
 
     /* ----------- Incremental Search -------------*/
 
-    var incSearchHandler =  function(evt) {
-        // *** this is miniBuf obj ****
-        // monitorMiniBuf added minibuffer to
-        // this function as a property:
-
-        var BACK_SEARCH = true;
-        var FORW_SEARCH = false;
-        var CASE_SENSITIVE = true;
-        var CASE_INSENSITIVE = false;
-        
+    var iSearchHandler =  function(evt) {
 
         if (! iSearchAllowable(evt)) {
             evt.preventDefault();
@@ -734,7 +742,7 @@ function EmacsyPlus() {
 
         if (evt.abort) {
             var restoreCursor = true;
-            if (evt.abort == 'esc') {
+            if (evt.abort === 'esc') {
                 restoreCursor = false;
             }
             abortISearch(restoreCursor);
@@ -743,42 +751,45 @@ function EmacsyPlus() {
             return;
         }
         
+        // **** If evt.search === 'nxtForward',
+        //      then call iSearcher.next();
+        //      If it's 'nxtBackward', then do that.
+
         var mBuf = this
         var bufVal = mBuf.value;
         mBuf.focus();
 
-        // Add the new char to the minibuffer, unless
-        // it was cnt-s or cnt-r (search again/search backward):
+        // Case sensitivity is determined
+        // by any of the search term chars
+        // being upper case:
+        if ((bufVal+evt.key).search(/[A-Z]/) > -1) {
+            iSearcher.setCaseSensitivity(true);
+        }
 
+        // Add the new char to the minibuffer and the
+        // iSearcher instance, unless it was cnt-s or cnt-r
+        // (search again/search backward):
+
+        var searchRes = null;
         if (evt.search === undefined) {
             if (evt.which === bsCode) {
                 mBuf.value = bufVal.slice(0,-1);
+                searchRes = iSearcher.chopChar();
             } else {
                 mBuf.value = bufVal + evt.key;
+                searchRes = iSearcher.addChar(evt.key);
             }
         }
-        var txt = mBuf.value;
 
-        var caseSensitivity = CASE_INSENSITIVE;
-        if (txt.search(/[A-Z]/) > -1) {
-            caseSensitivity = CASE_SENSITIVE;
-        }
+        //*******
+        // if (evt.search == 'nxtBackward') {
+        //     searchRes = self.find(txt, caseSensitivity, BACK_SEARCH);
+        // } else {
+        //     searchRes = self.find(txt, caseSensitivity, FORW_SEARCH);
+        // }
 
-        var searchRes = null;
-        if (evt.search == 'nxtBackward') {
-            searchRes = self.find(txt, caseSensitivity, BACK_SEARCH);
-        } else {
-            searchRes = self.find(txt, caseSensitivity, FORW_SEARCH);
-        }
-
-        if (searchRes) {
+        if (searchRes !== null || iSearcher.searchTerm().length === 0) {
             mBuf.style.backgroundColor = 'white';
-            var scrollTarget = findLastSelection();
-            if (typeof(scrollTarget) !== 'undefined') {
-                Jupyter.notebook.scroll_manager.scroll_to(scrollTarget.cell.element);
-            }
-                
-            //window.scrollTo(0, window.getSelection().getRangeAt(0).getBoundingClientRect().top)
         } else {
             mBuf.style.backgroundColor = 'red';
         }
@@ -789,9 +800,17 @@ function EmacsyPlus() {
 
     var abortISearch = function(restoreCursor) {
         removeMiniBuf();
-        if ((typeof(savedPlace) === 'object') && (typeof(restoreCursor) !== 'undefined')){
+        iSearcher = null;
+
+        if (typeof(restoreCursor) === 'undefined') {
+            restoreCursor = true;
+        }
+
+        if (restoreCursor && typeof(savedPlace) === 'object') {
             savedPlace.cm.doc.setCursor({line: savedPlace.line, ch: savedPlace.ch});
-        } 
+        } else {
+            
+        }
         
         Jupyter.notebook.edit_mode();
     }
@@ -813,8 +832,9 @@ function EmacsyPlus() {
         if (typeof(miniBuf) === 'undefined') {
             return '';
         }
-        stopMonitorMiniBuf(incSearchHandler);
+        stopMonitorMiniBuf(iSearchHandler);
         var miniBufContent = miniBuf.value;
+        miniBuf.value = "";
         var parentEl = miniBuf.parentElement;
         if (parentEl != null && typeof(parentEl) != 'undefined') {
             parentEl.removeChild(miniBuf);
@@ -827,18 +847,20 @@ function EmacsyPlus() {
         var miniBuf = getMiniBufFromToolbar();
         miniBuf.focus();
         clearAllSelections();
-        getToolbarDomEl().addEventListener("keydown", function(evt) {
+        // Need event listener to be named function,
+        // b/c we'll have to remove it when isearch
+        // is over:
+        mBufKeyListener = function(evt) {
             // Call the callback with minibuffer object
             // bound to 'this':
             callback.call(miniBuf, evt);
-        });
+        }
+        getToolbarDomEl().addEventListener("keydown", mBufKeyListener);
         return miniBuf;
     }
 
     var stopMonitorMiniBuf = function(callback) {
-        var miniBuf = getMiniBufFromToolbar();
-        miniBuf.removeEventListener("keypress", callback);
-        return miniBuf;
+        getToolbarDomEl().removeEventListener("keydown", mBufKeyListener);
     }
 
     var getMiniBufFromToolbar = function() {
@@ -970,222 +992,6 @@ function EmacsyPlus() {
         //         sel.anchor.ch === sel.head.ch);
     }
 
-    iSearch = function(searchTxt) {
-        var cells = Jupyter.notebook.get_cells();
-
-        // For saving positions in notebook where
-        // a previous match occurred during iSearch.
-        // I.e. matches of fewer letters in the
-        // minibuffer than entered up to a given point:
-        var placeStack  = [];
-
-        var createPlace = function() {
-            return {cellIndx : 0, 
-                    inOutput : false,
-                    searchStart : 0,
-                    selection : {anchor : {line : 0, ch : 0},
-                                 head   : {line : 0, ch : 0}
-                                }
-                   }
-        }
-
-        var initialCell  = Jupyter.notebook.get_selected_cell();
-        var initialPlace = createPlace();
-        initialPlace.cellIndx = Jupyter.notebook.find_cell_index(initialCell);
-        initialPlace.selection.cursor = initialCell.code_mirror.doc.getCursor();
-
-        // Place in notebook; inits to start of book:
-        var curPlace = createPlace();
-        
-        var copySel = function(src, dst) {
-            dst.line = src.line;
-            dst.ch   = src.ch;
-        }
-
-        var copyPlace = function(src) {
-            /*
-              Returns the copy of a place.
-            */
-
-            var dst = createPlace();
-            
-            dst.cellIndx    = src.cellIndx;
-            dst.inOutput    = src.inOutput;
-            dst.searchStart = src.searchStart;
-            copySel(src.selection.anchor, dst.selection.anchor);
-            copySel(src.selection.head, dst.selection.head);
-            return dst;
-        }
-
-
-        var nullTheSelection = function(place) {
-            place.selection.anchor.line = 0;
-            place.selection.anchor.ch = 0;
-            place.selection.head.line = 0;
-            place.selection.head.ch = 0;
-        }
-
-        var lineChIndx = function(str, offset) {
-            /* Given a multiline string and an offset integer into
-               the string, return the zero-origin line number of the
-               offset-containing line, and the remainder char count.
-               I.e. return a position {line: <l>, ch : <c>}.
-            */
-            var lines    = str.split('\n');
-            var lineIndx = 0;
-            // Number of CRs in whole string minus the
-            // number of CRs after the match:
-            var crsAllStr = str.match(/\n/g)
-            if (crsAllStr !== null) {
-                // Do have some CRs. 
-                var numAllCrs = crsAllStr.length;
-                // Any CRs after the offset?
-                var crsAfter = str.slice(offset).match(/\n/g);
-                if (crsAfter !== null) {
-                    // Also have CRs after offset:
-                    var numCrsAfter = crsAfter.length;
-                    lineIndx = numAllCrs - numCrsAfter;
-                } else {
-                    // Match is in last line, after at least
-                    // earlier one CR:
-                    lineIndx = numAllCrs;
-                    
-                }
-            } // No CRs at all, leave lineIndx at 0
-                
-            var prevChrs = 0;
-            for (let i=0; i<lineIndx; i++) {
-                prevChrs += lines[i].length;
-            }
-            // Subtract lineIndx b/c offset won't include newlines:
-            var inLineOffset = offset - prevChrs - lineIndx;
-            return {line : lineIndx, ch : inLineOffset};
-        }
-
-        var pushPlace = function(place) {
-            /*
-              Make copy of a place, and push it onto place stack.
-            */
-            placeStack.push(copyPlace(place));
-        }
-
-        var popPlace = function() {
-            /*
-              Pops most recent place off the stack and returns it.
-              If stack empty, returns a start of notebook for a place.
-            */
-            if (placeStack.length === 0) {
-                return createPlace();
-            }
-            return placeStack.pop();
-        }
-
-        var goPrevMatch = function(howFar) {
-            /* 
-               Have the next call to next() go back
-               to a previous selection, one that was
-               valid for a shorter search string than
-               the most recent.
-
-               :param howFar: if provided, number of
-               previous selections to go back to.
-               Default: 1
-               :type howFar: integer
-            */
-
-            // Note that stack will be empty if next() was
-            // never called or no match was ever found. Or
-            // the *currently* selected place in the notebook
-            // will be at top of stack.
-            if (typeof(howFar) === 'undefined') {
-                howFar = 1;
-            } else if (howFar > placeStack.length) {
-                howFar = placeStack.length;
-            } else if (howFar < 1) {
-                throw `Prev-match rollback must be a positive int. Was ${howFar}`;
-            }
-            // Pop all but the last of the number of
-            // requested place frame pops:
-            for (let i=0; i<howFar-1; i++) {
-                popPlace();
-            }
-            // Last pop is the one caller wants:
-            curPlace = popPlace();
-            return curPlace;
-        }
-        
-        return {
-            next : function() {
-                // Get where we are (recall: pop of empty stack returns
-                // start of notebook):
-                curPlace = popPlace();
-                // Save current selection place back onto
-                // the place stack.
-                pushPlace(curPlace);
-
-                for (let i=curPlace.cellIndx; i<cells.length; i++) {
-                    curPlace.cellIndx = i;
-                    var cell = cells[i];
-                    var cm  = cell.code_mirror;
-                    var txt = cell.get_text();
-                    var re  = new RegExp(searchTxt, 'i'); // ignore case
-                    // Find as many matches in this cell as we can:
-                    while (true) {
-                        var res = txt.slice(curPlace.searchStart).search(re);
-                        if (res === -1) {
-                            nullTheSelection(curPlace);
-                            break; // next cell
-                        }
-
-                        // Got a match:
-
-                        // Get line and chr within cell.
-                        // Remember: the search was not from start of
-                        // cell, but from end of selection. Correct
-                        // for this offset:
-                        var selStart = lineChIndx(txt,res + curPlace.searchStart);
-
-                        // In the all-in-one cell string we are now
-                        // at where search started this time (searchStart),
-                        // plus result of the search, plus length of
-                        // search word, which we will select below:
-                        curPlace.searchStart += res + searchTxt.length;
-                        copySel(selStart, curPlace.selection.anchor);
-                        curPlace.selection.head.line = selStart.line;
-                        curPlace.selection.head.ch = selStart.ch + searchTxt.length;
-                        // Save this newest (i.e. current) position:
-                        pushPlace(curPlace);
-                        
-                        clearSelection(cm);
-                        cm.doc.setSelection(curPlace.selection.anchor, curPlace.selection.head);
-                        return curPlace;
-                    }
-                }
-            },
-
-            addChar : function(chr) {
-                searchTxt += chr;
-                goPrevMatch();
-                this.next();
-            },
-            
-            chopChar : function() {
-                searchTxt = searchTxt.slice(0, searchTxt.length-1);
-                goPrevMatch();
-                if (searchTxt.length === 0){
-                    clearSelection(cells[curPlace.cellIndx].code_mirror);
-                    // Return to initial position:
-                    pushPlace(initialPlace);
-                }
-                this.next();
-            },
-
-            searchTerm : function() {
-                return searchTxt;
-            }
-        }
-    }
-
 
     /* ----------------------------  Call Constructor and Export Public Methods ---------- */
 
@@ -1193,3 +999,299 @@ function EmacsyPlus() {
 
 
 } // end class EmacsyPlus
+
+    /* ----------------------------  Class Place  ---------- */
+
+Place = function(initObj) {
+
+    var thisPlace = null;
+
+    var constructor = function(initObj) {
+        thisPlace = createPlace();
+        
+        if (typeof(initObj) !== 'undefined') {
+
+        }
+
+    }
+
+    var copy(other) {
+    }
+    
+    var createPlace = function() {
+        /*
+          Creates a default place that records the cell and
+          cursor position upon creation of this ISearcher instance.
+         */
+
+        var initialCell  = Jupyter.notebook.get_selected_cell();
+        initialCursor = initialCell.code_mirror.doc.getCursor();
+        
+        return {cellIndx : Jupyter.notebook.find_cell_index(initialCell), 
+                inOutput : false,
+                searchStart : 0,
+                selection : {anchor : {line : initialCursor.line, ch : initialCursor.ch},
+                             head   : {line : initialCursor.line, ch : initialCursor.ch}
+                            }
+               }
+    }
+}
+
+    /* ----------------------------  Class ISearcher  ---------- */
+
+ISearcher = function(initialSearchTxt) {
+
+    var searchTxt = '';
+    if (typeof(initialSearchTxt) === 'string') {
+        searchTxt = initialSearchTxt;
+    }
+    var caseSensitivity = false;
+    var cells = Jupyter.notebook.get_cells();
+
+    // For saving positions in notebook where
+    // a previous match occurred during iSearch.
+    // I.e. matches of fewer letters in the
+    // minibuffer than entered up to a given point:
+    var placeStack  = [];
+
+    var initialCell  = Jupyter.notebook.get_selected_cell();
+    initialCursor = initialCell.code_mirror.doc.getCursor();
+
+    var createPlace = function() {
+        /*
+          Creates a default place that records the cell and
+          cursor position upon creation of this ISearcher instance.
+         */
+        
+        return {cellIndx : Jupyter.notebook.find_cell_index(initialCell), 
+                inOutput : false,
+                searchStart : 0,
+                selection : {anchor : {line : initialCursor.line, ch : initialCursor.ch},
+                             head   : {line : initialCursor.line, ch : initialCursor.ch}
+                            }
+               }
+    }
+
+    var initialPlace = createPlace();
+
+    // Place in notebook; inits to initial cell/cursor
+    var curPlace = createPlace();
+    
+    var clearSelection = function(cm) {
+        cm.doc.setSelection(cm.doc.getCursor(), cm.doc.getCursor());
+    }
+
+    var clearAllSelections = function() {
+        for (let cell of cells) {
+            clearSelection(cell.code_mirror);
+        }
+    }
+
+    var copySel = function(src, dst) {
+        dst.line = src.line;
+        dst.ch   = src.ch;
+    }
+
+    var copyPlace = function(src) {
+        /*
+          Returns the copy of a place.
+        */
+
+        var dst = createPlace();
+        
+        dst.cellIndx    = src.cellIndx;
+        dst.inOutput    = src.inOutput;
+        dst.searchStart = src.searchStart;
+        copySel(src.selection.anchor, dst.selection.anchor);
+        copySel(src.selection.head, dst.selection.head);
+        return dst;
+    }
+
+
+    var nullTheSelection = function(place) {
+        place.selection.anchor.line = 0;
+        place.selection.anchor.ch = 0;
+        place.selection.head.line = 0;
+        place.selection.head.ch = 0;
+    }
+
+    var lineChIndx = function(str, offset) {
+        /* Given a multiline string and an offset integer into
+           the string, return the zero-origin line number of the
+           offset-containing line, and the remainder char count.
+           I.e. return a position {line: <l>, ch : <c>}.
+        */
+        var lines    = str.split('\n');
+        var lineIndx = 0;
+        // Number of CRs in whole string minus the
+        // number of CRs after the match:
+        var crsAllStr = str.match(/\n/g)
+        if (crsAllStr !== null) {
+            // Do have some CRs. 
+            var numAllCrs = crsAllStr.length;
+            // Any CRs after the offset?
+            var crsAfter = str.slice(offset).match(/\n/g);
+            if (crsAfter !== null) {
+                // Also have CRs after offset:
+                var numCrsAfter = crsAfter.length;
+                lineIndx = numAllCrs - numCrsAfter;
+            } else {
+                // Match is in last line, after at least
+                // earlier one CR:
+                lineIndx = numAllCrs;
+                
+            }
+        } // No CRs at all, leave lineIndx at 0
+        
+        var prevChrs = 0;
+        for (let i=0; i<lineIndx; i++) {
+            prevChrs += lines[i].length;
+        }
+        // Subtract lineIndx b/c offset won't include newlines:
+        var inLineOffset = offset - prevChrs - lineIndx;
+        return {line : lineIndx, ch : inLineOffset};
+    }
+
+    var pushPlace = function(place) {
+        /*
+          Make copy of a place, and push it onto place stack.
+        */
+        placeStack.push(copyPlace(place));
+    }
+
+    var popPlace = function() {
+        /*
+          Pops most recent place off the stack and returns it.
+          If stack empty, returns a start of notebook for a place.
+        */
+        if (placeStack.length === 0) {
+            return createPlace();
+        }
+        return placeStack.pop();
+    }
+
+    var goPrevMatch = function(howFar) {
+        /* 
+           Have the next call to next() go back
+           to a previous selection, one that was
+           valid for a shorter search string than
+           the most recent.
+
+           :param howFar: if provided, number of
+           previous selections to go back to.
+           Default: 1
+           :type howFar: integer
+        */
+
+        // Note that stack will be empty if next() was
+        // never called or no match was ever found. Or
+        // the *currently* selected place in the notebook
+        // will be at top of stack.
+        if (typeof(howFar) === 'undefined') {
+            howFar = 1;
+        } else if (howFar > placeStack.length) {
+            howFar = placeStack.length;
+        } else if (howFar < 1) {
+            throw `Prev-match rollback must be a positive int. Was ${howFar}`;
+        }
+        // Pop all but the last of the number of
+        // requested place frame pops:
+        for (let i=0; i<howFar-1; i++) {
+            popPlace();
+        }
+        // Last pop is the one caller wants:
+        curPlace = popPlace();
+        return curPlace;
+    }
+    
+    return {
+        next : function() {
+            // Finds next result. Returns a place object if
+            // successful, else returns null;
+            
+            // Get where we are (recall: pop of empty stack returns
+            // start of notebook):
+            curPlace = popPlace();
+            // Save current selection place back onto
+            // the place stack.
+            pushPlace(curPlace);
+
+            for (let i=curPlace.cellIndx; i<cells.length; i++) {
+                curPlace.cellIndx = i;
+                var cell = cells[i];
+                var cm  = cell.code_mirror;
+                var txt = cell.get_text();
+                var re  = null;
+                if (caseSensitivity) {
+                    re = new RegExp(searchTxt);
+                } else {
+                    re = new RegExp(searchTxt, 'i'); // ignore case
+                }
+                // Find as many matches in this cell as we can:
+                while (true) {
+                    var res = txt.slice(curPlace.searchStart).search(re);
+                    if (res === -1) {
+                        nullTheSelection(curPlace);
+                        break; // next cell
+                    }
+
+                    // Got a match:
+
+                    // Get line and chr within cell.
+                    // Remember: the search was not from start of
+                    // cell, but from end of selection. Correct
+                    // for this offset:
+                    var selStart = lineChIndx(txt,res + curPlace.searchStart);
+
+                    // In the all-in-one cell string we are now
+                    // at where search started this time (searchStart),
+                    // plus result of the search, plus length of
+                    // search word, which we will select below:
+                    curPlace.searchStart += res + searchTxt.length;
+                    copySel(selStart, curPlace.selection.anchor);
+                    curPlace.selection.head.line = selStart.line;
+                    curPlace.selection.head.ch = selStart.ch + searchTxt.length;
+                    // Save this newest (i.e. current) position:
+                    pushPlace(curPlace);
+                    
+                    clearSelection(cm);
+                    cm.doc.setSelection(curPlace.selection.anchor, curPlace.selection.head);
+                    Jupyter.notebook.scroll_manager.scroll_to(cell.element);
+                    return curPlace;
+                }
+            }
+            return null;
+        },
+
+        addChar : function(chr) {
+            searchTxt += chr;
+            goPrevMatch();
+            return this.next();
+        },
+        
+        chopChar : function() {
+            searchTxt = searchTxt.slice(0, searchTxt.length-1);
+            goPrevMatch();
+            if (searchTxt.length === 0){
+                clearSelection(cells[curPlace.cellIndx].code_mirror);
+                // Return to initial position:
+                pushPlace(initialPlace);
+            }
+            return this.next();
+        },
+
+        searchTerm : function() {
+            return searchTxt;
+        },
+
+        setCaseSensitivity : function(beCaseSensitive) {
+            caseSensitivity = beCaseSensitive;
+            return beCaseSensitive;
+        },
+
+        caseSensitivity : function() {
+            return caseSensitivity;
+        }
+    }
+}
+
