@@ -1012,7 +1012,27 @@ function EmacsyPlus() {
                I.e. return a position {line: <l>, ch : <c>}.
             */
             var lines    = str.split('\n');
-            var lineIndx = str.match(/\n/g).length - str.slice(offset).match(/\n/g).length;
+            var lineIndx = 0;
+            // Number of CRs in whole string minus the
+            // number of CRs after the match:
+            var crsAllStr = str.match(/\n/g)
+            if (crsAllStr !== null) {
+                // Do have some CRs. 
+                var numAllCrs = crsAllStr.length;
+                // Any CRs after the offset?
+                var crsAfter = str.slice(offset).match(/\n/g);
+                if (crsAfter !== null) {
+                    // Also have CRs after offset:
+                    var numCrsAfter = crsAfter.length;
+                    lineIndx = numAllCrs - numCrsAfter;
+                } else {
+                    // Match is in last line, after at least
+                    // earlier one CR:
+                    lineIndx = numAllCrs;
+                    
+                }
+            } // No CRs at all, leave lineIndx at 0
+                
             var prevChrs = 0;
             for (let i=0; i<lineIndx; i++) {
                 prevChrs += lines[i].length;
@@ -1022,29 +1042,43 @@ function EmacsyPlus() {
             return {line : lineIndx, ch : inLineOffset};
         }
 
+        var searchStart = 0;
         return {
             next : function() {
-                for (let i=prevPlace.cellIndx; i<cells.length; i++) {
+                for (let i=curPlace.cellIndx; i<cells.length; i++) {
+                    curPlace.cellIndx = i;
                     var cell = cells[i];
                     var cm  = cell.code_mirror;
                     var txt = cell.get_text();
                     var re  = new RegExp(searchTxt, 'i'); // ignore case
-                    var res = txt.search(re);
-                    if (res === -1) {
-                        curPlace.cellIndx = i;
-                        nullTheSelection(curPlace);
-                        continue; // next cell
+                    // Find as many matches in this cell as we can:
+                    while (true) {
+                        var res = txt.slice(searchStart).search(re);
+                        if (res === -1) {
+                            nullTheSelection(curPlace);
+                            searchStart = 0;
+                            break; // next cell
+                        }
+                        // Got a match. Get line and chr within cell.
+                        // Remember: the search was not from start of
+                        // cell, but from end of selection. Correct
+                        // for this offset:
+                        var selStart = lineChIndx(txt,res + searchStart);
+
+                        // In the all-in-one cell string we are now
+                        // at where search started this time (searchStart),
+                        // plus result of the search, plus length of
+                        // search word, which we will select below:
+                        searchStart += res + searchTxt.length;
+                        copyPlace(curPlace, prevPlace);
+                        copySel(selStart, curPlace.selection.anchor);
+                        
+                        curPlace.selection.head.line = selStart.line;
+                        curPlace.selection.head.ch = selStart.ch + searchTxt.length;
+                        clearSelection(cm);
+                        cm.doc.setSelection(curPlace.selection.anchor, curPlace.selection.head);
+                        return curPlace;
                     }
-                    // Got a match. Get line and chr within cell:
-                    var selStart = lineChIndx(txt,res);
-                    copyPlace(curPlace, prevPlace);
-                    curPlace.cell = cell;
-                    copySel(selStart, curPlace.selection.anchor);
-                    
-                    curPlace.selection.head.line = selStart.line;
-                    curPlace.selection.head.ch = selStart.ch + searchTxt.length;
-                    cm.doc.setSelection(curPlace.selection.anchor, curPlace.selection.head);
-                    return curPlace;
                 }
             }
         }
