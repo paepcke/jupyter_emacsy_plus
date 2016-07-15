@@ -81,9 +81,15 @@ function EmacsyPlus() {
     var ctrlXMap = {};
     var mark = null;
     var os = km.getOsPlatform();
+    var ctrlInProgress = false;
 
-    var mBufName = 'minibuffer';
-    var backspaceCode = 8;
+    var mBufName   = 'minibuffer';
+    var savedPlace = undefined;
+
+    var bsCode    = 8;   // backspace
+    var enterCode = 13;
+    var ctrlCode  = 17;
+    var escCode   = 27;
 
     var constructor = function() {
     
@@ -161,7 +167,8 @@ function EmacsyPlus() {
         
         // Instances of this EmacsyPlus class have only public methods:
         EmacsyPlus.instance =
-            {help : helpCmd
+            {help : helpCmd,
+             iSearch : iSearch  //***** take out.
             }
 
         //********
@@ -622,6 +629,7 @@ function EmacsyPlus() {
             // the equivalent of clearing selection:
             cm.doc.setCursor(cm.doc.getCursor());
         }
+        abortISearch();
     }
     
     var undoCmd = function(cm) {
@@ -700,6 +708,8 @@ function EmacsyPlus() {
     
     var isearchForwardCmd = function(cm) {
         //window.find();
+        var cur = cm.doc.getCursor();
+        savedPlace = {cm : cm, line : cur.line, ch : cur.ch};
         var mBuf = monitorMiniBuf(incSearchHandler)
     }
 
@@ -709,44 +719,115 @@ function EmacsyPlus() {
         // *** this is miniBuf obj ****
         // monitorMiniBuf added minibuffer to
         // this function as a property:
+
+        var BACK_SEARCH = true;
+        var FORW_SEARCH = false;
+        var CASE_SENSITIVE = true;
+        var CASE_INSENSITIVE = false;
+        
+
+        if (! iSearchAllowable(evt)) {
+            evt.preventDefault();
+            evt.stopPropagation();
+            return;
+        }
+
+        if (evt.abort) {
+            var restoreCursor = true;
+            if (evt.abort == 'esc') {
+                restoreCursor = false;
+            }
+            abortISearch(restoreCursor);
+            evt.preventDefault();
+            evt.stopPropagation();
+            return;
+        }
+        
         var mBuf = this
         var bufVal = mBuf.value;
-        //****mBuf.focus();
-        //****Jupyter.notebook.edit_mode();
-        if (evt.which === backspaceCode) {
-            mBuf.value = bufVal.slice(0,-1);
-        } else {
-            mBuf.value = bufVal + evt.key;
+        mBuf.focus();
+
+        // Add the new char to the minibuffer, unless
+        // it was cnt-s or cnt-r (search again/search backward):
+
+        if (evt.search === undefined) {
+            if (evt.which === bsCode) {
+                mBuf.value = bufVal.slice(0,-1);
+            } else {
+                mBuf.value = bufVal + evt.key;
+            }
         }
+        var txt = mBuf.value;
+
+        var caseSensitivity = CASE_INSENSITIVE;
+        if (txt.search(/[A-Z]/) > -1) {
+            caseSensitivity = CASE_SENSITIVE;
+        }
+
+        var searchRes = null;
+        if (evt.search == 'nxtBackward') {
+            searchRes = self.find(txt, caseSensitivity, BACK_SEARCH);
+        } else {
+            searchRes = self.find(txt, caseSensitivity, FORW_SEARCH);
+        }
+
+        if (searchRes) {
+            mBuf.style.backgroundColor = 'white';
+            var scrollTarget = findLastSelection();
+            if (typeof(scrollTarget) !== 'undefined') {
+                Jupyter.notebook.scroll_manager.scroll_to(scrollTarget.cell.element);
+            }
+                
+            //window.scrollTo(0, window.getSelection().getRangeAt(0).getBoundingClientRect().top)
+        } else {
+            mBuf.style.backgroundColor = 'red';
+        }
+
         evt.preventDefault();
+        evt.stopPropagation();
     }
 
-    var addMiniBuf = function(cell) {
-        var cell = ensureCell(cell);
+    var abortISearch = function(restoreCursor) {
+        removeMiniBuf();
+        if ((typeof(savedPlace) === 'object') && (typeof(restoreCursor) !== 'undefined')){
+            savedPlace.cm.doc.setCursor({line: savedPlace.line, ch: savedPlace.ch});
+        } 
+        
+        Jupyter.notebook.edit_mode();
+    }
+
+    var addMiniBuf = function() {
         // Get input area of cell:
-        var cellDiv = getCellDomEl(cell);
+        var toolbarDiv = getToolbarDomEl();
         var miniBuf = document.createElement('input');
         miniBuf.type = 'text';
-        cell[mBufName] = miniBuf;
-        cellDiv.appendChild(miniBuf);
+        toolbarDiv[mBufName] = miniBuf;
+        toolbarDiv.appendChild(miniBuf);
+        miniBuf.style.paddingLeft = '5px';
+        miniBuf.style.marginLeft = '5px';
         return miniBuf;
     }
 
-    var removeMiniBuf = function(cell) {
-        var cell = ensureCell(cell);
-        var miniBuf = cell[mBufName];
+    var removeMiniBuf = function() {
+        var miniBuf = getToolbarDomEl()[mBufName];
+        if (typeof(miniBuf) === 'undefined') {
+            return '';
+        }
+        stopMonitorMiniBuf(incSearchHandler);
         var miniBufContent = miniBuf.value;
-        miniBuf.parentElement.removeChild(miniBuf);
+        var parentEl = miniBuf.parentElement;
+        if (parentEl != null && typeof(parentEl) != 'undefined') {
+            parentEl.removeChild(miniBuf);
+            parentEl[mBufName] = undefined;
+        }
         return miniBufContent;
     }
 
-    var monitorMiniBuf = function(callback, cell) {
-        var cell = ensureCell(cell);
-        var miniBuf = getMiniBufFromCell(cell);
-        if (typeof(miniBuf) === 'undefined') {
-            miniBuf = addMiniBuf(cell);
-        }
-        getCellDomEl(cell).addEventListener("keydown", function(evt) {
+    var monitorMiniBuf = function(callback) {
+        var miniBuf = getMiniBufFromToolbar();
+        miniBuf.focus();
+        clearAllSelections();
+        getToolbarDomEl().addEventListener("keydown", function(evt) {
             // Call the callback with minibuffer object
             // bound to 'this':
             callback.call(miniBuf, evt);
@@ -754,26 +835,23 @@ function EmacsyPlus() {
         return miniBuf;
     }
 
-    var stopMonitorMiniBuf = function(cell, callback) {
-        var cell = ensureCell(cell);
+    var stopMonitorMiniBuf = function(callback) {
+        var miniBuf = getMiniBufFromToolbar();
         miniBuf.removeEventListener("keypress", callback);
         return miniBuf;
     }
 
-    var getMiniBufFromCell = function(cell) {
-        var cell = ensureCell(cell);
-        var allMBufs = document.getElementsByName(mBufName);
-        for (let el of getCellDomEl(cell).children) {
-            if (el.name === mBufName) {
-                return el;
-            }
+    var getMiniBufFromToolbar = function() {
+        var toolbarDiv = getToolbarDomEl();
+        var miniBuf = getToolbarDomEl()[mBufName]
+        if (typeof(miniBuf) === 'undefined') {
+            miniBuf = addMiniBuf();
         }
-        return undefined;
+        return miniBuf;
     }
 
-    var getCellDomEl = function(cell) {
-        var cell = ensureCell(cell);
-        return cell.element[0];
+    var getToolbarDomEl = function() {
+        return Jupyter.toolbar.element[0];
     }
 
     var ensureCell = function(cell) {
@@ -783,6 +861,194 @@ function EmacsyPlus() {
         return cell;
     }
     
+
+    /* --------------  Utilities ---------------- */
+
+    var iSearchAllowable = function(evt) {
+
+        /*
+          Accepts: esc, cnt-g, cnt-s, cnt-r
+          For esc and cnt-g: sets evt.abort=true, else 'false'
+         */
+
+        var keyCode = evt.which;
+
+        evt.abort = false;
+        evt.search = undefined;
+
+        if (ctrlInProgress) {
+            switch(evt.key) {
+            case 'g':
+                ctrlInProgress = false;
+                evt.abort = 'Ctrl-G';
+                return true;
+                break;
+            case 's':
+                evt.search = 'nxtForward';
+                return true;
+                break;
+            case 'r':
+                evt.search = 'nxtBackward';
+                return true;
+                break;
+            }
+        }
+
+        if (keyCode === escCode) {
+            ctrlInProgress = false;
+            evt.abort = 'esc';
+            return true;
+        }
+        
+        if (keyCode === ctrlCode) {
+            ctrlInProgress = true;
+            return false;
+        } else {
+            ctrlInProgress = false;
+        }
+        var valid =
+            (keyCode === bsCode)                     ||
+            (keyCode > 47  && keyCode < 58)          || // number keys
+            (keyCode == 32)                          || // spacebar
+            (keyCode > 64  && keyCode < 91)          || // letter keys
+            (keyCode > 95  && keyCode < 112)         || // numpad keys
+            (keyCode > 185 && keyCode < 193)         || // ;=,-./` (in order)
+            (keyCode > 218 && keyCode < 223);           // [\]' (in order)
+
+        return valid;
+    }
+
+    /*----------------------
+      | clearAllSelections
+      | ----------------- */
+
+    var clearAllSelections = function() {
+        for (let cell of Jupyter.notebook.get_cells()) {
+            clearSelection(cell.code_mirror);
+        }
+    }
+    
+    /*----------------------
+      | findLastSelection
+      | ----------------- */
+
+    var findLastSelection = function() {
+        /*
+          Returns the last selection within the last cell
+          of a notebook. If no selection exists, returns
+          undefined. 
+
+          :returns Object with properties 'cell', and 'selection'.
+             The cell property holds the cell that contains the
+             last selection. The selection object is of the form
+             {anchor : {line: <n> : ch: <n>}, head : {line: <m> : ch: <m>}}
+          :rtype {object | undefined}
+         */
+        var cells = Jupyter.notebook.get_cells();
+        for (let i=cells.length-1; i>=0; i--) {
+            var cell = cells[i];
+            var selections = cell.code_mirror.doc.listSelections();
+            if (selections.length > 0) {
+                // Found last cell with at least one
+                // selection:
+                var lastSelection = selections[selections.length - 1];
+                // Every cell has one 'empty' selection. It's
+                // anchor and head are the same:
+                if (selectionEmpty(lastSelection)) {
+                    continue;
+                }
+                return {cell : cell, selection: lastSelection};
+            }
+        }
+        return undefined;
+    }
+    
+
+    var selectionEmpty = function(sel) {
+        return (sel.anchor.ch > 0);
+        // return (sel.anchor.line === sel.head.line &&
+        //         sel.anchor.ch === sel.head.ch);
+    }
+
+    iSearch = function(searchTxt) {
+        var cells = Jupyter.notebook.get_cells();
+        var prevPlace = {cellIndx : 0, 
+                         inOutput : false,
+                         selection : {anchor : {line : 0, ch : 0},
+                                      head   : {line : 0, ch : 0}
+                                     }
+                        }
+        var curPlace = {cellIndx : 0, 
+                        inOutput : false,
+                        selection : {anchor : {line : 0, ch : 0},
+                                     head   : {line : 0, ch : 0}
+                                    }
+                       }
+
+        var copySel = function(src, dst) {
+            dst.line = src.line;
+            dst.ch   = src.ch;
+        }
+
+        var copyPlace = function(src, dst) {
+            dst.cellIndx = src.cellIndx;
+            dst.inOutput = src.inOutput;
+            copySel(src.selection.anchor, dst.selection.anchor);
+            copySel(src.selection.head, dst.selection.head);
+        }
+
+
+        var nullTheSelection = function(place) {
+            place.selection.anchor.line = 0;
+            place.selection.anchor.ch = 0;
+            place.selection.head.line = 0;
+            place.selection.head.ch = 0;
+        }
+
+        var lineChIndx = function(str, offset) {
+            /* Given a multiline string and an offset integer into
+               the string, return the zero-origin line number of the
+               offset-containing line, and the remainder char count.
+               I.e. return a position {line: <l>, ch : <c>}.
+            */
+            var lines    = str.split('\n');
+            var lineIndx = str.match(/\n/g).length - str.slice(offset).match(/\n/g).length;
+            var prevChrs = 0;
+            for (let i=0; i<lineIndx; i++) {
+                prevChrs += lines[i].length;
+            }
+            // Subtract lineIndx b/c offset won't include newlines:
+            var inLineOffset = offset - prevChrs - lineIndx;
+            return {line : lineIndx, ch : inLineOffset};
+        }
+
+        return {
+            next : function() {
+                for (let i=prevPlace.cellIndx; i<cells.length; i++) {
+                    var cell = cells[i];
+                    var cm  = cell.code_mirror;
+                    var txt = cell.get_text();
+                    var re  = new RegExp(searchTxt, 'i'); // ignore case
+                    var res = txt.search(re);
+                    if (res === -1) {
+                        curPlace.cellIndx = i;
+                        nullTheSelection(curPlace);
+                        continue; // next cell
+                    }
+                    // Got a match. Get line and chr within cell:
+                    var selStart = lineChIndx(txt,res);
+                    copyPlace(curPlace, prevPlace);
+                    curPlace.cell = cell;
+                    copySel(selStart, curPlace.selection.anchor);
+                    
+                    curPlace.selection.head.line = selStart.line;
+                    curPlace.selection.head.ch = selStart.ch + searchTxt.length;
+                    cm.doc.setSelection(curPlace.selection.anchor, curPlace.selection.head);
+                    return curPlace;
+                }
+            }
+        }
+    }
 
 
     /* ----------------------------  Call Constructor and Export Public Methods ---------- */
