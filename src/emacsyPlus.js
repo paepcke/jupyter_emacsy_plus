@@ -800,7 +800,6 @@ function EmacsyPlus() {
 
     var abortISearch = function(restoreCursor) {
         removeMiniBuf();
-        iSearcher = null;
 
         if (typeof(restoreCursor) === 'undefined') {
             restoreCursor = true;
@@ -809,10 +808,15 @@ function EmacsyPlus() {
         if (restoreCursor && typeof(savedPlace) === 'object') {
             savedPlace.cm.doc.setCursor({line: savedPlace.line, ch: savedPlace.ch});
         } else {
-            
+            var cells    = Jupyter.notebook.get_cells();
+            var curPlace = iSearcher.curPlace();
+            var curCell  = cells[curPlace.cellIndx];
+            curCell.code_mirror.doc.setCursor(curPlace.selection.head);
+            curCell.focus_cell();
         }
         
         Jupyter.notebook.edit_mode();
+        iSearcher = null;
     }
 
     var addMiniBuf = function() {
@@ -1006,18 +1010,74 @@ Place = function(initObj) {
 
     var thisPlace = null;
 
+    var cellIndx;
+    var inOutput;
+    var searchStart;
+    var selection;
+    
     var constructor = function(initObj) {
         thisPlace = createPlace();
         
         if (typeof(initObj) !== 'undefined') {
 
+            // Very defensively copy given values
+            // to our standard Place instance:
+            
+            for (let placeInfo of initObj) {
+                if (initObj.hasOwnProperty(placeInfo)) {
+                    let value = initObj[placeInfo];
+                    switch(value) {
+                    case 'cellIndx':
+                        thisPlace.cellIndx = value;
+                        break;
+                    case 'inOutput':
+                        thisPlace.inOutput = value;
+                        break;
+                    case 'searchStart':
+                        thisPlace.searchStart = value;
+                        break;
+                    case 'selection':
+                        // Check for passed-in values ill-formed:
+                        try {
+                            thisPlace.selection.anchor.line = value.anchor.line;
+                        } catch(err) {throw "Place selection property without anchor.line"};
+                        try {
+                            thisPlace.selection.anchor.ch = value.anchor.ch;
+                        } catch(err) {throw "Place selection property without anchor.ch"};
+                        try {
+                            thisPlace.selection.head.line = value.head.line;
+                        } catch(err) {throw "Place selection property without head.line"};
+                        try {
+                            thisPlace.selection.head.ch = value.head.ch;
+                        } catch(err) {throw "Place selection property without head.ch"};
+                    }
+                }
+            }
         }
-
+        var cellIndx    = thisPlace.cellIndx;
+        var inOutput    = thisPlace.inOutput;
+        var searchStart = thisPlace.searchStart;
+        var selection   = thisPlace.selection;
+        
+        return {
+            value : value,
+            cellIndx : cellIndx,
+            inOutput : inOutput,
+            searchStart : searchStart,
+            selection : selection,
+            clone : clone,
+            nullTheSelection : nullTheSelection
+        }
     }
 
-    var copy(other) {
+    var value = function() {
+        return thisPlace;
     }
-    
+
+    var clone = function() {
+        return new Place(thisPlace);
+    }
+
     var createPlace = function() {
         /*
           Creates a default place that records the cell and
@@ -1035,6 +1095,32 @@ Place = function(initObj) {
                             }
                }
     }
+
+    var copy = function(other) {
+        /*
+          Returns the copy of a place.
+        */
+        thisPlace.cellIndx    = other.cellIndx;
+        thisPlace.inOutput    = other.inOutput;
+        thisPlace.searchStart = other.searchStart;
+        copySel(other.selection.anchor, thisPlace.selection.anchor);
+        copySel(other.selection.head, thisPlace.selection.head);
+        return dst;
+    }
+
+    var copySel = function(src, dst) {
+        dst.line = src.line;
+        dst.ch   = src.ch;
+    }
+
+    var nullTheSelection = function() {
+        thisPlace.selection.anchor.line = 0;
+        thisPlace.selection.anchor.ch = 0;
+        thisPlace.selection.head.line = 0;
+        thisPlace.selection.head.ch = 0;
+    }
+
+    return constructor();
 }
 
     /* ----------------------------  Class ISearcher  ---------- */
@@ -1054,28 +1140,10 @@ ISearcher = function(initialSearchTxt) {
     // minibuffer than entered up to a given point:
     var placeStack  = [];
 
-    var initialCell  = Jupyter.notebook.get_selected_cell();
-    initialCursor = initialCell.code_mirror.doc.getCursor();
-
-    var createPlace = function() {
-        /*
-          Creates a default place that records the cell and
-          cursor position upon creation of this ISearcher instance.
-         */
-        
-        return {cellIndx : Jupyter.notebook.find_cell_index(initialCell), 
-                inOutput : false,
-                searchStart : 0,
-                selection : {anchor : {line : initialCursor.line, ch : initialCursor.ch},
-                             head   : {line : initialCursor.line, ch : initialCursor.ch}
-                            }
-               }
-    }
-
-    var initialPlace = createPlace();
+    var initialPlace = Place();
 
     // Place in notebook; inits to initial cell/cursor
-    var curPlace = createPlace();
+    var curPlace = Place();
     
     var clearSelection = function(cm) {
         cm.doc.setSelection(cm.doc.getCursor(), cm.doc.getCursor());
@@ -1085,34 +1153,6 @@ ISearcher = function(initialSearchTxt) {
         for (let cell of cells) {
             clearSelection(cell.code_mirror);
         }
-    }
-
-    var copySel = function(src, dst) {
-        dst.line = src.line;
-        dst.ch   = src.ch;
-    }
-
-    var copyPlace = function(src) {
-        /*
-          Returns the copy of a place.
-        */
-
-        var dst = createPlace();
-        
-        dst.cellIndx    = src.cellIndx;
-        dst.inOutput    = src.inOutput;
-        dst.searchStart = src.searchStart;
-        copySel(src.selection.anchor, dst.selection.anchor);
-        copySel(src.selection.head, dst.selection.head);
-        return dst;
-    }
-
-
-    var nullTheSelection = function(place) {
-        place.selection.anchor.line = 0;
-        place.selection.anchor.ch = 0;
-        place.selection.head.line = 0;
-        place.selection.head.ch = 0;
     }
 
     var lineChIndx = function(str, offset) {
@@ -1156,7 +1196,7 @@ ISearcher = function(initialSearchTxt) {
         /*
           Make copy of a place, and push it onto place stack.
         */
-        placeStack.push(copyPlace(place));
+        placeStack.push(place.clone());
     }
 
     var popPlace = function() {
@@ -1165,7 +1205,7 @@ ISearcher = function(initialSearchTxt) {
           If stack empty, returns a start of notebook for a place.
         */
         if (placeStack.length === 0) {
-            return createPlace();
+            return Place();
         }
         return placeStack.pop();
     }
@@ -1231,7 +1271,7 @@ ISearcher = function(initialSearchTxt) {
                 while (true) {
                     var res = txt.slice(curPlace.searchStart).search(re);
                     if (res === -1) {
-                        nullTheSelection(curPlace);
+                        curPlace.nullTheSelection();
                         break; // next cell
                     }
 
@@ -1248,7 +1288,9 @@ ISearcher = function(initialSearchTxt) {
                     // plus result of the search, plus length of
                     // search word, which we will select below:
                     curPlace.searchStart += res + searchTxt.length;
-                    copySel(selStart, curPlace.selection.anchor);
+                    curPlace.selection.anchor.line = selStart.line;
+                    curPlace.selection.anchor.ch = selStart.ch;
+
                     curPlace.selection.head.line = selStart.line;
                     curPlace.selection.head.ch = selStart.ch + searchTxt.length;
                     // Save this newest (i.e. current) position:
@@ -1291,6 +1333,14 @@ ISearcher = function(initialSearchTxt) {
 
         caseSensitivity : function() {
             return caseSensitivity;
+        },
+
+        curPlace : function() {
+            return curPlace;
+        },
+
+        initialPlace : function() {
+            return initialPlace;
         }
     }
 }
