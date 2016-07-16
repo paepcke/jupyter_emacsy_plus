@@ -1425,45 +1425,45 @@ ISearcher = function(initialSearchTxt, isReSearch) {
             } else {
                 re = new RegExp(reSafeTxt, 'i'); // ignore case
             }
-            // Find as many matches in this cell as we can:
-            while (true) {
-                var res = txt.slice(curPlace().searchStart()).search(re);
-                if (res === -1) {
-                    curPlace().nullTheSelection();
-                    curPlace().setSearchStart(0);
-                    break; // next cell
-                }
 
-                // Got a match:
+            //****var res = txt.slice(curPlace().searchStart()).search(re);
+            var res = txt.search(re);
 
-                // Get line and chr within cell.
-                // Remember: the search was not from start of
-                // cell, but from end of selection. Correct
-                // for this offset:
-                var selStart = lineChIndx(txt,res + curPlace().searchStart());
-
-                // In the all-in-one cell string we are now
-                // at where search started this time (searchStart),
-                // plus result of the search, plus length of
-                // search word, which we will select below:
-                curPlace().setSearchStart(curPlace().searchStart() + res + searchTxt.length);
-                curPlace().selection().anchor.line = selStart.line;
-                curPlace().selection().anchor.ch = selStart.ch;
-
-                curPlace().selection().head.line = selStart.line;
-                curPlace().selection().head.ch = selStart.ch + searchTxt.length;
-                // Save this newest (i.e. current) position:
-                pushPlace(curPlace());
-                
-                clearSelection(cm);
-                cm.doc.setSelection(curPlace().selection().anchor,
-                                    curPlace().selection().head);
-                Jupyter.notebook.scroll_manager.scroll_to(cell.element);
-                return curPlace();
+            if (res === -1) {
+                curPlace().nullTheSelection();
+                curPlace().setSearchStart(0);
+                break; // next cell
             }
+
+            // Got a match:
+
+            // Get line and chr within cell.
+            // Remember: the search was not from start of
+            // cell, but from end of selection. Correct
+            // for this offset:
+            var selStart = lineChIndx(txt,res + curPlace().searchStart());
+
+            // In the all-in-one cell string we are now
+            // at where search started this time (searchStart),
+            // plus result of the search, plus length of
+            // search word, which we will select below:
+            curPlace().setSearchStart(curPlace().searchStart() + res + searchTxt.length);
+            curPlace().selection().anchor.line = selStart.line;
+            curPlace().selection().anchor.ch = selStart.ch;
+
+            curPlace().selection().head.line = selStart.line;
+            curPlace().selection().head.ch = selStart.ch + searchTxt.length;
+            // Save this newest (i.e. current) position:
+            pushPlace(curPlace());
+            
+            clearSelection(cm);
+            cm.doc.setSelection(curPlace().selection().anchor,
+                                curPlace().selection().head);
+            Jupyter.notebook.scroll_manager.scroll_to(cell.element);
+            return curPlace();
         }
         return null;
-    };
+    }
 
     var addChar = function(chr) {
         searchTxt += chr;
