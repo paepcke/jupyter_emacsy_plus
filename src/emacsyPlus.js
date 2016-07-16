@@ -1426,22 +1426,18 @@ ISearcher = function(initialSearchTxt, isReSearch) {
                 re = new RegExp(reSafeTxt, 'i'); // ignore case
             }
 
-            //****var res = txt.slice(curPlace().searchStart()).search(re);
-            var res = txt.search(re);
+            var res = re.exec(txt);
 
-            if (res === -1) {
+            if (res === null) {
                 curPlace().nullTheSelection();
                 curPlace().setSearchStart(0);
-                break; // next cell
+                continue; // next cell
             }
 
             // Got a match:
 
-            // Get line and chr within cell.
-            // Remember: the search was not from start of
-            // cell, but from end of selection. Correct
-            // for this offset:
-            var selStart = lineChIndx(txt,res + curPlace().searchStart());
+            // Get line/ch values of match index:
+            var selStart = lineChIndx(txt, res.index);
 
             // In the all-in-one cell string we are now
             // at where search started this time (searchStart),
@@ -1452,7 +1448,7 @@ ISearcher = function(initialSearchTxt, isReSearch) {
             curPlace().selection().anchor.ch = selStart.ch;
 
             curPlace().selection().head.line = selStart.line;
-            curPlace().selection().head.ch = selStart.ch + searchTxt.length;
+            curPlace().selection().head.ch = selStart.ch + this.searchTerm().length;
             // Save this newest (i.e. current) position:
             pushPlace(curPlace());
             
