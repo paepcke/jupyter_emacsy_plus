@@ -78,6 +78,11 @@ function EmacsyPlus() {
 
     /* Singleton class */
 
+    var BS_CODE    = 8;   // backspace
+    var ENTER_CODE = 13;
+    var CTRL_CODE  = 17;
+    var ESC_CODE   = 27;
+
     var BACK_SEARCH = true;
     var FORW_SEARCH = false;
     var CASE_SENSITIVE = true;
@@ -96,11 +101,6 @@ function EmacsyPlus() {
 
     var mBufKeyListener = null;
 
-    var bsCode    = 8;   // backspace
-    var enterCode = 13;
-    var ctrlCode  = 17;
-    var escCode   = 27;
-
     var constructor = function() {
     
         if (typeof(EmacsyPlus.instance) !== 'undefined') {
@@ -118,30 +118,32 @@ function EmacsyPlus() {
 
         km.registerCommand('ctrlXCmd', ctrlXCmd, true);  // true: ok to overwrite function
         km.registerCommand('killCmd', killCmd, true);
-        km.registerCommand('killRegionCmd', killRegionCmd, true)        
-        km.registerCommand('yankCmd', yankCmd, true)
-        km.registerCommand('copyCmd', copyCmd, true)
-        km.registerCommand('setMarkCmd', setMarkCmd, true)
-        km.registerCommand('selPrevCharCmd', selPrevCharCmd, true)
-        km.registerCommand('selNxtCharCmd', selNxtCharCmd, true)                
-        km.registerCommand('selNxtWordCmd', selNxtWordCmd, true)
-        km.registerCommand('selPrevWordCmd', selPrevWordCmd, true)
-        km.registerCommand('delWordAfterCmd', delWordAfterCmd, true)
-        km.registerCommand('delWordBeforeCmd', delWordBeforeCmd, true)        
-        km.registerCommand('saveToRegCmd', saveToRegCmd, true)
-        km.registerCommand('insertFromRegCmd', insertFromRegCmd, true)
-        km.registerCommand('cancelCmd', cancelCmd, true)
-        km.registerCommand('xchangePtMarkCmd', xchangePtMarkCmd, true)
-        km.registerCommand('pointToRegisterCmd', pointToRegisterCmd, true)
-        km.registerCommand('jumpToRegisterCmd', jumpToRegisterCmd, true)
-        km.registerCommand('goCellStartCmd', goCellStartCmd, true)
-        km.registerCommand('goCellEndCmd', goCellEndCmd, true)
-        km.registerCommand('goNotebookStartCmd', goNotebookStartCmd, true)
-        km.registerCommand('goNotebookEndCmd', goNotebookEndCmd, true)
-        km.registerCommand('openLineCmd', openLineCmd, true)
-        km.registerCommand('isearchForwardCmd', isearchForwardCmd, true)
-        km.registerCommand('reSearchForwardCmd', reSearchForwardCmd, true)                
-        km.registerCommand('helpCmd', helpCmd, true)
+        km.registerCommand('killRegionCmd', killRegionCmd, true);
+        km.registerCommand('yankCmd', yankCmd, true);
+        km.registerCommand('copyCmd', copyCmd, true);
+        km.registerCommand('setMarkCmd', setMarkCmd, true);
+        km.registerCommand('selPrevCharCmd', selPrevCharCmd, true);
+        km.registerCommand('selNxtCharCmd', selNxtCharCmd, true);             
+        km.registerCommand('selNxtWordCmd', selNxtWordCmd, true);
+        km.registerCommand('selPrevWordCmd', selPrevWordCmd, true);
+        km.registerCommand('delWordAfterCmd', delWordAfterCmd, true);
+        km.registerCommand('delWordBeforeCmd', delWordBeforeCmd, true);
+        km.registerCommand('saveToRegCmd', saveToRegCmd, true);
+        km.registerCommand('insertFromRegCmd', insertFromRegCmd, true);
+        km.registerCommand('cancelCmd', cancelCmd, true);
+        km.registerCommand('xchangePtMarkCmd', xchangePtMarkCmd, true);
+        km.registerCommand('pointToRegisterCmd', pointToRegisterCmd, true);
+        km.registerCommand('jumpToRegisterCmd', jumpToRegisterCmd, true);
+        km.registerCommand('goCellStartCmd', goCellStartCmd, true);
+        km.registerCommand('goCellEndCmd', goCellEndCmd, true);
+        km.registerCommand('goNotebookStartCmd', goNotebookStartCmd, true);
+        km.registerCommand('goNotebookEndCmd', goNotebookEndCmd, true);
+        km.registerCommand('openLineCmd', openLineCmd, true);
+        km.registerCommand('isearchForwardCmd', isearchForwardCmd, true);
+        km.registerCommand('reSearchForwardCmd', reSearchForwardCmd, true);
+        km.registerCommand('goNxtCellCmd', goNxtCellCmd, true);
+        km.registerCommand('goPrvCellCmd', goPrvCellCmd, true);
+        km.registerCommand('helpCmd', helpCmd, true);
         
 
         //************
@@ -255,6 +257,9 @@ function EmacsyPlus() {
         emacsyPlusMap['Home']              = 'goCellStartCmd';
         emacsyPlusMap['End']               = 'goCellEndCmd';
 
+        emacsyPlusMap['Shift-Ctrl-N']      = 'goNxtCellCmd';
+        emacsyPlusMap['Shift-Ctrl-P']      = 'goPrvCellCmd';        
+
         if (os === 'Mac') {
             emacsyPlusMap['Cmd-Up']        = 'goNotebookStartCmd';
             emacsyPlusMap['Cmd-Down']      = 'goNotebookEndCmd';
@@ -278,7 +283,7 @@ function EmacsyPlus() {
         /* Searching */
         emacsyPlusMap['Ctrl-S']            = "isearchForwardCmd";
         emacsyPlusMap['Ctrl-R']            = "findPrev";
-        emacsyPlusMap['Alt-S']             = "reSearchForwardCmd";
+        emacsyPlusMap['Shift-Ctrl-S']      = "reSearchForwardCmd";
 
         //*******************
         // For testing binding suspension:
@@ -708,6 +713,14 @@ function EmacsyPlus() {
         cm.doc.setCursor({line : cm.doc.lineCount(), ch : lastLine.length-1});
     }
 
+    var goNxtCellCmd = function(cm) {
+        Jupyter.notebook.select_next().edit_mode();
+    }
+
+    var goPrvCellCmd = function(cm) {
+        Jupyter.notebook.select_prev().edit_mode();
+    }
+
     var goNotebookStartCmd = function(cm) {
         getCm(Jupyter.notebook.get_cells()[0]).focus();
     }
@@ -759,8 +772,8 @@ function EmacsyPlus() {
         // i.e. non-error minibuf background
         // is green:
         var normalColor = 'white';
-        if (iSearcher.reSearch) {
-            normalColor = 'green';
+        if (iSearcher.regexSearch()) {
+            normalColor = 'DarkTurquoise';
         }
 
         // Filter out unwanted keystrokes in minibuf:
@@ -775,6 +788,10 @@ function EmacsyPlus() {
             var restoreCursor = true;
             if (evt.abort === 'esc') {
                 restoreCursor = false;
+                // For regex we only collected the regex
+                // in the minibuf so far. Execute the
+                // search before quiting the minibuf:
+                iSearcher.next();
             }
             abortISearch(restoreCursor);
             evt.preventDefault();
@@ -784,7 +801,7 @@ function EmacsyPlus() {
         
         // another cnt-s while in minibuf:
         if (evt.search === 'nxtForward') {
-            iSearcher.next();
+            iSearcher.searchAgain();
             evt.preventDefault();
             evt.stopPropagation();
             return;
@@ -796,13 +813,14 @@ function EmacsyPlus() {
 
         var mBuf = this
         var bufVal = mBuf.value;
+        mBuf.style.backgroundColor = normalColor;            
         mBuf.focus();
 
         // Case sensitivity is determined
         // by any of the search term chars
         // being upper case:
         if ((bufVal+evt.key).search(/[A-Z]/) > -1) {
-            iSearcher.setCaseSensitivity = true;
+            iSearcher.setCaseSensitivity(true);
         }
 
         // Add the new char to the minibuffer and the
@@ -810,8 +828,9 @@ function EmacsyPlus() {
         // (search again/search backward):
 
         var searchRes = null;
+
         if (evt.search === undefined) {
-            if (evt.which === bsCode) {
+            if (evt.which === BS_CODE) {
                 mBuf.value = bufVal.slice(0,-1);
                 searchRes = iSearcher.chopChar();
             } else {
@@ -960,20 +979,26 @@ function EmacsyPlus() {
             }
         }
 
-        if (keyCode === escCode) {
+        if (keyCode === ENTER_CODE) {
             ctrlInProgress = false;
             evt.abort = 'esc';
             return true;
         }
         
-        if (keyCode === ctrlCode) {
+        if (keyCode === ESC_CODE) {
+            ctrlInProgress = false;
+            evt.abort = 'esc';
+            return true;
+        }
+
+        if (keyCode === CTRL_CODE) {
             ctrlInProgress = true;
             return false;
-        } else {
+        } else if (!evt.ctrlKey) {
             ctrlInProgress = false;
         }
         var valid =
-            (keyCode === bsCode)                     ||
+            (keyCode === BS_CODE)                     ||
             (keyCode > 47  && keyCode < 58)          || // number keys
             (keyCode == 32)                          || // spacebar
             (keyCode > 64  && keyCode < 91)          || // letter keys
@@ -1242,6 +1267,7 @@ ISearcher = function(initialSearchTxt, isReSearch) {
 
         return Object.preventExtensions({
             next : next, // method
+            searchAgain : searchAgain, // method
             addChar : addChar, // method
             chopChar : chopChar, // method
             searchTerm : searchTerm, // getter
@@ -1249,7 +1275,8 @@ ISearcher = function(initialSearchTxt, isReSearch) {
             setCaseSensitivity : setCaseSensitivity, // setter
             curPlace : curPlace, // getter
             setCurPlace : setCurPlace, //setter
-            initialPlace : initialPlace // getter
+            initialPlace : initialPlace, // getter
+            regexSearch : regexSearch // getter
         })
     }
 
@@ -1278,6 +1305,13 @@ ISearcher = function(initialSearchTxt, isReSearch) {
     var caseSensitivity = function() {
         return _caseSensitivity;
     }
+
+    var regexSearch = function() {
+        return reSearch;
+    }
+
+
+
 
     var clearSelection = function(cm) {
         cm.doc.setSelection(cm.doc.getCursor(), cm.doc.getCursor());
@@ -1398,9 +1432,13 @@ ISearcher = function(initialSearchTxt, isReSearch) {
         return curPlace();
     }
     
-    var next = function() {
-        // Finds next result. Returns a place object if
-        // successful, else returns null;
+    var next = function(repeatSearch) {
+        /* Finds next result. Returns a place object if
+           successful, else returns null. If repeatSearch
+           is true, skips past the current search
+           result to find the next result for the same
+           search str.
+        */
         
         // Get where we are (recall: pop of empty stack returns
         // start of notebook):
@@ -1426,7 +1464,15 @@ ISearcher = function(initialSearchTxt, isReSearch) {
                 re = new RegExp(reSafeTxt, 'i'); // ignore case
             }
 
-            var res = re.exec(txt);
+            var txtToSearch = null;
+            if (typeof(repeatSearch) === 'undefined') {
+                txtToSearch = txt.slice(curPlace().searchStart());
+            } else {
+                // **** Really?:
+                txtToSearch = txt.slice(curPlace().setSearchStart(curPlace().searchStart() +
+                                                                  this.searchTerm().length))
+            }
+            var res = re.exec(txtToSearch);
 
             if (res === null) {
                 curPlace().nullTheSelection();
@@ -1436,19 +1482,25 @@ ISearcher = function(initialSearchTxt, isReSearch) {
 
             // Got a match:
 
-            // Get line/ch values of match index:
-            var selStart = lineChIndx(txt, res.index);
+            // Get match index in terms of cell line/ch, given
+            // the match index within the full cell content:
+            var startOfMatch = curPlace().searchStart() + res.index;
+            var selStart = lineChIndx(txt, startOfMatch);
 
             // In the all-in-one cell string we are now
             // at where search started this time (searchStart),
             // plus result of the search, plus length of
             // search word, which we will select below:
-            curPlace().setSearchStart(curPlace().searchStart() + res + searchTxt.length);
+            curPlace().setSearchStart(startOfMatch);
+
             curPlace().selection().anchor.line = selStart.line;
             curPlace().selection().anchor.ch = selStart.ch;
 
             curPlace().selection().head.line = selStart.line;
-            curPlace().selection().head.ch = selStart.ch + this.searchTerm().length;
+            // Res is array of occurrences. So length of matched
+            // text is available from that even for regex search
+            // the the search term has the regex special chars:
+            curPlace().selection().head.ch = selStart.ch + res[0].length;
             // Save this newest (i.e. current) position:
             pushPlace(curPlace());
             
@@ -1461,11 +1513,19 @@ ISearcher = function(initialSearchTxt, isReSearch) {
         return null;
     }
 
+    var searchAgain = function() {
+        return this.next(true); // true: skip one result
+    }
+    
     var addChar = function(chr) {
         searchTxt += chr;
         if (! reSearch) {
             // Update the isearch-needed regex escapes
             reSafeTxt = escReSpecials(searchTxt)
+        } else {
+            reSafeTxt = searchTxt;
+            // For regex search: don't search incrementally:
+            return true;
         }
         goPrevMatch();
         return this.next();
@@ -1476,6 +1536,10 @@ ISearcher = function(initialSearchTxt, isReSearch) {
         if (! reSearch) {
             // Update the isearch-needed regex escapes
             reSafeTxt = escReSpecials(searchTxt)
+        } else {
+            reSafeTxt = searchTxt;
+            // For regex search: don't search incrementally:
+            return true;
         }
         goPrevMatch();
         if (searchTxt.length === 0){
