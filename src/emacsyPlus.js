@@ -139,7 +139,8 @@ function EmacsyPlus() {
         km.registerCommand('goNotebookStartCmd', goNotebookStartCmd, true)
         km.registerCommand('goNotebookEndCmd', goNotebookEndCmd, true)
         km.registerCommand('openLineCmd', openLineCmd, true)
-        km.registerCommand('isearchForwardCmd', isearchForwardCmd, true)        
+        km.registerCommand('isearchForwardCmd', isearchForwardCmd, true)
+        km.registerCommand('reSearchForwardCmd', reSearchForwardCmd, true)                
         km.registerCommand('helpCmd', helpCmd, true)
         
 
@@ -277,6 +278,7 @@ function EmacsyPlus() {
         /* Searching */
         emacsyPlusMap['Ctrl-S']            = "isearchForwardCmd";
         emacsyPlusMap['Ctrl-R']            = "findPrev";
+        emacsyPlusMap['Alt-S']             = "reSearchForwardCmd";
 
         //*******************
         // For testing binding suspension:
@@ -716,9 +718,7 @@ function EmacsyPlus() {
     }
     
     var isearchForwardCmd = function(cm) {
-        //window.find();
-        var cur = cm.doc.getCursor();
-        savedPlace = {cm : cm, line : cur.line, ch : cur.ch};
+        prepSearch(cm);
         // This ISearcher instance will be search from
         // the current position. The keydown interrupt
         // service routing iSearchHandler will add or
@@ -730,9 +730,33 @@ function EmacsyPlus() {
         var mBuf = monitorMiniBuf(iSearchHandler)
     }
 
+    var reSearchForwardCmd = function(cm) {
+        prepSearch(cm);
+        // This ISearcher instance will be search from
+        // the current position. The keydown interrupt
+        // service routing iSearchHandler will add or
+        // remove letters.
+        iSearcher  = ISearcher('', true); // true: be regex search
+
+        // Present the minibuffer, get focus to it,
+        // and behave isearchy via the iSearchHandler:
+        var mBuf = monitorMiniBuf(iSearchHandler)
+    }
+
+    var prepSearch = function(cm) {
+        var cur = cm.doc.getCursor();
+        savedPlace = {cm : cm, line : cur.line, ch : cur.ch};
+        
+    }
+
     /* ----------- Incremental Search -------------*/
 
     var iSearchHandler =  function(evt) {
+
+        var normalColor = 'white';
+        if (iSearcher.reSearch) {
+            normalColor = 'green';
+        }
 
         if (! iSearchAllowable(evt)) {
             evt.preventDefault();
@@ -789,7 +813,7 @@ function EmacsyPlus() {
         // }
 
         if (searchRes !== null || iSearcher.searchTerm().length === 0) {
-            mBuf.style.backgroundColor = 'white';
+            mBuf.style.backgroundColor = normalColor;
         } else {
             mBuf.style.backgroundColor = 'red';
         }
@@ -1125,11 +1149,22 @@ Place = function(initObj) {
 
     /* ----------------------------  Class ISearcher  ---------- */
 
-ISearcher = function(initialSearchTxt) {
+ISearcher = function(initialSearchTxt, isReSearch) {
 
     var searchTxt = '';
+    var reSafeTxt = '';
+    var reSearch = false;
+
+    if (isReSearch) {
+        reSearch = true;
+    }
     if (typeof(initialSearchTxt) === 'string') {
         searchTxt = initialSearchTxt;
+        if (reSearch) {
+            reSafeTxt = searchTxt;
+        } else {
+            reSafeTxt = escReSpecials(searchTxt);
+        }
     }
     var caseSensitivity = false;
     var cells = Jupyter.notebook.get_cells();
@@ -1210,6 +1245,23 @@ ISearcher = function(initialSearchTxt) {
         return placeStack.pop();
     }
 
+    var escReSpecials = function(searchStr) {
+        // ^$.()*+[]\
+        var safeStr = searchStr.replace(/\^/g, '\\^');
+        safeStr = safeStr.replace(/\$/g, '\\$');
+        safeStr = safeStr.replace(/\./g, '\\.');
+        safeStr = safeStr.replace(/\(/g, '\\(');
+        safeStr = safeStr.replace(/\)/g, '\\)');
+        safeStr = safeStr.replace(/\*/g, '\\*');
+        safeStr = safeStr.replace(/\+/g, '\\+');
+        safeStr = safeStr.replace(/\[/g, '\\[');
+        safeStr = safeStr.replace(/\]/g, '\\]');
+        safeStr = safeStr.replace(/\\/g, '\\');
+
+        return RegExp(safeStr);
+    }
+
+
     var goPrevMatch = function(howFar) {
         /* 
            Have the next call to next() go back
@@ -1262,10 +1314,15 @@ ISearcher = function(initialSearchTxt) {
                 var cm  = cell.code_mirror;
                 var txt = cell.get_text();
                 var re  = null;
+                // Note: we use String.search(re)
+                // for searching whether or not the
+                // UI presents regex or incremental
+                // search. The difference is in how
+                // the search string is escaped.
                 if (caseSensitivity) {
-                    re = new RegExp(searchTxt);
+                    re = new RegExp(reSafeTxt);
                 } else {
-                    re = new RegExp(searchTxt, 'i'); // ignore case
+                    re = new RegExp(reSafeTxt, 'i'); // ignore case
                 }
                 // Find as many matches in this cell as we can:
                 while (true) {
@@ -1307,12 +1364,20 @@ ISearcher = function(initialSearchTxt) {
 
         addChar : function(chr) {
             searchTxt += chr;
+            if (! reSearch) {
+                // Update the isearch-needed regex escapes
+                reSafeTxt = escReSpecials(searchTxt)
+            }
             goPrevMatch();
             return this.next();
         },
         
         chopChar : function() {
             searchTxt = searchTxt.slice(0, searchTxt.length-1);
+            if (! reSearch) {
+                // Update the isearch-needed regex escapes
+                reSafeTxt = escReSpecials(searchTxt)
+            }
             goPrevMatch();
             if (searchTxt.length === 0){
                 clearSelection(cells[curPlace.cellIndx].code_mirror);
