@@ -802,7 +802,7 @@ function EmacsyPlus() {
         // by any of the search term chars
         // being upper case:
         if ((bufVal+evt.key).search(/[A-Z]/) > -1) {
-            iSearcher.caseSensitivity = true;
+            iSearcher.setCaseSensitivity = true;
         }
 
         // Add the new char to the minibuffer and the
@@ -848,9 +848,9 @@ function EmacsyPlus() {
             savedPlace.cm.doc.setCursor({line: savedPlace.line, ch: savedPlace.ch});
         } else {
             var cells    = Jupyter.notebook.get_cells();
-            var curPlace = iSearcher.curPlace;
-            var curCell  = cells[curPlace.cellIndx];
-            curCell.code_mirror.doc.setCursor(curPlace.selection.head);
+            var lastPlace = iSearcher.curPlace();
+            var curCell  = cells[lastPlace.cellIndx()];
+            curCell.code_mirror.doc.setCursor(lastPlace.selection().head);
             curCell.focus_cell();
         }
         
@@ -1063,27 +1063,27 @@ Place = function(initObj) {
                     let value = initObj[placeInfo];
                     switch(placeInfo) {
                     case 'cellIndx':
-                        thisPlace.cellIndx = value;
+                        thisPlace.cellIndx = value(); // value is a getter method
                         break;
                     case 'inOutput':
-                        thisPlace.inOutput = value;
+                        thisPlace.inOutput = value();
                         break;
                     case 'searchStart':
-                        thisPlace.searchStart = value;
+                        thisPlace.searchStart = value();
                         break;
                     case 'selection':
                         // Check for passed-in values ill-formed:
                         try {
-                            thisPlace.selection.anchor.line = value.anchor.line;
+                            thisPlace.selection.anchor.line = value().anchor.line;
                         } catch(err) {throw "Place selection property without anchor.line"};
                         try {
-                            thisPlace.selection.anchor.ch = value.anchor.ch;
+                            thisPlace.selection.anchor.ch = value().anchor.ch;
                         } catch(err) {throw "Place selection property without anchor.ch"};
                         try {
-                            thisPlace.selection.head.line = value.head.line;
+                            thisPlace.selection.head.line = value().head.line;
                         } catch(err) {throw "Place selection property without head.line"};
                         try {
-                            thisPlace.selection.head.ch = value.head.ch;
+                            thisPlace.selection.head.ch = value().head.ch;
                         } catch(err) {throw "Place selection property without head.ch"};
                     }
                 }
@@ -1091,19 +1091,60 @@ Place = function(initObj) {
         }
         
         return {
-            value : value,
-            cellIndx : thisPlace.cellIndx,
-            inOutput : thisPlace.inOutput,
-            searchStart : thisPlace.searchStart,
-            selection : thisPlace.selection,
-            clone : clone,
-            nullTheSelection : nullTheSelection
+            value : value, // method
+            cellIndx : cellIndx, // getter
+            setCellIndx : setCellIndx, // setter            
+            inOutput : inOutput, // getter
+            setInOutput : setInOutput, // setter            
+            searchStart : searchStart, // getter
+            setSearchStart : setSearchStart, // setter            
+            selection : selection, // getter
+            setSelection : setSelection, // setter 
+            clone : clone, // method
+            nullTheSelection : nullTheSelection // method
         }
     }
 
     var value = function() {
         return thisPlace;
     }
+
+    var cellIndx = function() {
+        return thisPlace.cellIndx;
+    }
+
+    var setCellIndx = function(newIndx) {
+        thisPlace.cellIndx = newIndx
+        return newIndx;
+    }
+
+    var inOutput = function() {
+        return thisPlace.inOutput;
+    }
+
+    var setInOutput = function(newInOutput) {
+        thisPlace.inOutput = newInOutput;
+        return newInOutput;
+    }
+
+    var searchStart = function() {
+        return thisPlace.searchStart
+    }
+
+    var setSearchStart = function(newSearchStart) {
+        thisPlace.searchStart = newSearchStart;
+        return newSearchStart;
+    }
+
+    var selection = function() {
+        return thisPlace.selection;
+    }
+    
+    var setSelection = function(newSelection) {
+        thisPlace.selection = newSelection;
+        return newSelection;
+    }
+
 
     var clone = function() {
         return Place(this);
@@ -1131,11 +1172,11 @@ Place = function(initObj) {
         /*
           Returns the copy of a place.
         */
-        thisPlace.cellIndx    = other.cellIndx;
-        thisPlace.inOutput    = other.inOutput;
-        thisPlace.searchStart = other.searchStart;
-        copySel(other.selection.anchor, thisPlace.selection.anchor);
-        copySel(other.selection.head, thisPlace.selection.head);
+        thisPlace.cellIndx    = other.cellIndx();
+        thisPlace.inOutput    = other.inOutput();
+        thisPlace.searchStart = other.searchStart();
+        copySel(other.selection().anchor, thisPlace.selection().anchor);
+        copySel(other.selection().head, thisPlace.selection().head);
         return dst;
     }
 
@@ -1158,11 +1199,19 @@ Place = function(initObj) {
 
 ISearcher = function(initialSearchTxt, isReSearch) {
 
+    /* Handles incremental and regex searches across entire
+       notebook. Scrolls to hits.
+
+       Implementation note: all functions and instance vars are
+          private. Vars preceeded by underscores are available outside
+          via setters/getters. See return value of constructor.
+*/
+
     var searchTxt = '';
     var reSafeTxt = '';
     var reSearch = false;
 
-    var caseSensitivity = false;
+    var _caseSensitivity = false;
     var cells = Jupyter.notebook.get_cells();
 
     // For saving positions in notebook where
@@ -1171,9 +1220,12 @@ ISearcher = function(initialSearchTxt, isReSearch) {
     // minibuffer than entered up to a given point:
     var placeStack  = [];
 
-    var initialPlace = Place();
-    // Place in notebook; inits to initial cell/cursor
-    var curPlace = Place();
+    // Remember where in notebook we started search
+    var _initialPlace = Place();
+
+    // Progressively changing place in notebook; inits
+    // to initial cell/cursor
+    var _curPlace = Place();
 
     var constructor = function(initialSearchTxt, isReSearch) {
         if (isReSearch) {
@@ -1189,14 +1241,42 @@ ISearcher = function(initialSearchTxt, isReSearch) {
         }
 
         return Object.preventExtensions({
-            next : next,
-            addChar : addChar,
-            chopChar : chopChar,
-            searchTerm : searchTerm,
-            caseSensitivity : caseSensitivity,
-            curPlace : curPlace,
-            initialPlace : initialPlace
+            next : next, // method
+            addChar : addChar, // method
+            chopChar : chopChar, // method
+            searchTerm : searchTerm, // getter
+            caseSensitivity : caseSensitivity, // getter
+            setCaseSensitivity : setCaseSensitivity, // setter
+            curPlace : curPlace, // getter
+            setCurPlace : setCurPlace, //setter
+            initialPlace : initialPlace // getter
         })
+    }
+
+    var searchTerm = function() {
+        return searchTxt;
+    }
+
+    var initialPlace = function() {
+        return _initialPlace;
+    }
+
+    var setCurPlace = function(newPlace) {
+        _curPlace = newPlace;
+        return _curPlace;
+    }
+
+    var curPlace = function() {
+        return _curPlace;
+    }
+
+    var setCaseSensitivity = function(isCaseSens) {
+        _caseSensitivity = isCaseSens;
+        return _caseSensitivity;
+    }
+
+    var caseSensitivity = function() {
+        return _caseSensitivity;
     }
 
     var clearSelection = function(cm) {
@@ -1252,7 +1332,7 @@ ISearcher = function(initialSearchTxt, isReSearch) {
         */
         var placeClone = place.clone();
         placeStack.push(placeClone);
-        curPlace = placeClone;
+        setCurPlace(placeClone);
     }
 
     var popPlace = function() {
@@ -1263,8 +1343,8 @@ ISearcher = function(initialSearchTxt, isReSearch) {
         if (placeStack.length === 0) {
             return Place();
         }
-        curPlace = placeStack.pop();
-        return curPlace;
+        setCurPlace(placeStack.pop());
+        return curPlace();
     }
 
     var escReSpecials = function(searchStr) {
@@ -1314,8 +1394,8 @@ ISearcher = function(initialSearchTxt, isReSearch) {
             popPlace();
         }
         // Last pop is the one caller wants:
-        curPlace = popPlace();
-        return curPlace;
+        setCurPlace(popPlace());
+        return curPlace();
     }
     
     var next = function() {
@@ -1324,13 +1404,13 @@ ISearcher = function(initialSearchTxt, isReSearch) {
         
         // Get where we are (recall: pop of empty stack returns
         // start of notebook):
-        curPlace = popPlace();
+        setCurPlace(popPlace());
         // Save current selection place back onto
         // the place stack.
-        pushPlace(curPlace);
+        pushPlace(curPlace());
 
-        for (let i=curPlace.cellIndx; i<cells.length; i++) {
-            curPlace.cellIndx = i;
+        for (let i=curPlace().cellIndx(); i<cells.length; i++) {
+            curPlace().setCellIndx(i);
             var cell = cells[i];
             var cm  = cell.code_mirror;
             var txt = cell.get_text();
@@ -1340,17 +1420,17 @@ ISearcher = function(initialSearchTxt, isReSearch) {
             // UI presents regex or incremental
             // search. The difference is in how
             // the search string is escaped.
-            if (caseSensitivity) {
+            if (caseSensitivity()) {
                 re = new RegExp(reSafeTxt);
             } else {
                 re = new RegExp(reSafeTxt, 'i'); // ignore case
             }
             // Find as many matches in this cell as we can:
             while (true) {
-                var res = txt.slice(curPlace.searchStart).search(re);
+                var res = txt.slice(curPlace().searchStart()).search(re);
                 if (res === -1) {
-                    curPlace.nullTheSelection();
-                    curPlace.searchStart = 0;
+                    curPlace().nullTheSelection();
+                    curPlace().setSearchStart(0);
                     break; // next cell
                 }
 
@@ -1360,25 +1440,26 @@ ISearcher = function(initialSearchTxt, isReSearch) {
                 // Remember: the search was not from start of
                 // cell, but from end of selection. Correct
                 // for this offset:
-                var selStart = lineChIndx(txt,res + curPlace.searchStart);
+                var selStart = lineChIndx(txt,res + curPlace().searchStart());
 
                 // In the all-in-one cell string we are now
                 // at where search started this time (searchStart),
                 // plus result of the search, plus length of
                 // search word, which we will select below:
-                curPlace.searchStart += res + searchTxt.length;
-                curPlace.selection.anchor.line = selStart.line;
-                curPlace.selection.anchor.ch = selStart.ch;
+                curPlace().setSearchStart(curPlace().searchStart() + res + searchTxt.length);
+                curPlace().selection().anchor.line = selStart.line;
+                curPlace().selection().anchor.ch = selStart.ch;
 
-                curPlace.selection.head.line = selStart.line;
-                curPlace.selection.head.ch = selStart.ch + searchTxt.length;
+                curPlace().selection().head.line = selStart.line;
+                curPlace().selection().head.ch = selStart.ch + searchTxt.length;
                 // Save this newest (i.e. current) position:
-                pushPlace(curPlace);
+                pushPlace(curPlace());
                 
                 clearSelection(cm);
-                cm.doc.setSelection(curPlace.selection.anchor, curPlace.selection.head);
+                cm.doc.setSelection(curPlace().selection().anchor,
+                                    curPlace().selection().head);
                 Jupyter.notebook.scroll_manager.scroll_to(cell.element);
-                return curPlace;
+                return curPlace();
             }
         }
         return null;
@@ -1402,15 +1483,11 @@ ISearcher = function(initialSearchTxt, isReSearch) {
         }
         goPrevMatch();
         if (searchTxt.length === 0){
-            clearSelection(cells[curPlace.cellIndx].code_mirror);
+            clearSelection(cells[curPlace().cellIndx()].code_mirror);
             // Return to initial position:
-            pushPlace(initialPlace);
+            pushPlace(_initialPlace);
         }
         return this.next();
-    }
-
-    var searchTerm = function() {
-        return searchTxt;
     }
 
     return constructor(initialSearchTxt, isReSearch);
