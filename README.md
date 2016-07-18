@@ -1,23 +1,42 @@
 ##Enhanced Emacs Mode for CodeMirror and Jupyter
 
-Two classes that build on top of the CodeMirror version used in Jupyter 4.1.0. The first class, *SafeKeyMap*, allows installation of custom keymaps, (possibly) based on keymaps that already exist in CodeMirror.
+An Emacs mode for Jupyter that is closer to Gnu Emacs than the built-in *emacsy* mode. Built for Jupyter 4.x.
 
-The second class, *EmacsyPlus* uses *SaveKeyMap* to implement an editing mode closer to Emacs than CodeMirror's built-in *emacsy* map.
-###*EmacsyPlus*
-
-*EmacsyPlus* creates a keymap closer to Emacs than the 'emacsy' map provided with CodeMirror. For instance the following are provided:
+*EmacsyPlus* creates a keymap closer to Emacs than the *emacsy* map provided with CodeMirror. For instance, the following are provided:
 
 - Named content registers
 - Named location registers
+- Incremental and regex search (forward only right now)
 - Single- and multi-line kills (cnt-k), which can then be yanked (cnt-y). 
 - Cnt-x [?]> commands are supported via a secondary keymap dispatch.
 - Key binding changes accomplished by changing a table, similar to what would happen in a .emacs file.
 
-**Note**: Key F1 in a Jupyter cell shows active bindings.
+**Note**: Key **F1** in a Jupyter cell shows active bindings.
 
 Disclaimer: I tried to test on Linux and Mac, in both Chrome and Firefox. I may well have missed cases. Let me know.
 
+###*Installation*
+
+- Install Jupyter
+- Clone this repo.
+- Install:
+
+```
+python setup.py install
+```
+
+The installation will copy two files into your Jupyter customization directory (by default ~/.jupyter/custom). It will also add one entry to your custom.js file in the same directory.
+
+This is all you need to know for *EmacsyPlus*. Below is information about an underlying keymapping facility on which *EmacsyPlus* is built. Only read if you want to build a different mode.
+
+Do scan the limitations at the bottom.
+
+-----------
+
 ### *SafeKeyMap*
+
+The mode is built atop *SafeKeyMap* that may in itself be of use for other key mapping projects. The mode operates on CodeMirror, editor that serves Jupyter cells.
+
 CodeMirror provides facilities for creating maps between keystroke names and commands to run when such a key is pressed. Included is the ability to define *fallthrough* maps that are consulted if the active keymap does not contain a just-pressed key. However, a bit more work is required to use those features than might be ideal. This class builds on the CodeMirror facilities; EmacsyPlus is built using this class.
 
 #####Advantage of using *SafeKeyMap* over doing the work directly:
@@ -86,18 +105,10 @@ The `nxtKey` is a string such as: 'a', 'Ctrl-b', 'Ctrl-B', 'Alt-x', etc.
   Class *EmacsyPlus* provides an example of the whole process.
 
 
-###*Installation*
-
-- Clone the repo.
-- If used for Jupyter: 
-```
-python setup.py install
-```
-The use of setuptools maybe an abuse, since the code is purely JavaScript. But it's convenient.
 - While the code is all CodeMirror, it does assume the existence of a global variable CodeMirror. This variable is available in Jupyter 4.0.x notebooks, which is where the code was tested. The automatic installation assumes that Jupyter is installed. For other contexts a more manual installation is needed: The classes need to be loaded, and the CodeMirror variable must be created.
 
 ###*Known Bugs or Limitations*
+- Currently, reverse isearch and reverse regex search are not implemented.
 - Some browsers' keyboard shortcuts are processed before CodeMirror receives keystrokes. Two common Emacs keys conflict with this pre-emption: Alt/Meta/Cmd-D, and Alt/Meta/Cmd-W. The former sets a bookmark for the currently visited page. The latter deletes the current browser tab. In Firefox you can install the MenuWizard add-on and disable/change those, or other interfering keys. For Chrome on Mac: Use System Preferences-->Keyboard-->AppShortcuts
 to bind Cmd-W to something else, like F2. 
-- In `suspendKeyBinding()` and `restoreKeyBinding()` methods in *SafeKeyMap* don't work. The bindings seem to get properly removed from the correct map, as well as restored. But the commands bound to the keys are still called. Maybe CodeMirror needs to be kicked to refresh some cash?
-- Because of the above bug, `Cnt-x Cnt-x` (exchange point/mark) can't be implemented as planned. The workaround in the current code is to bind the command to `Cnt-x Cnt-X` instead. Note the capitalization in the second keystroke. Once the first bug is fixed, this second one goes away.
+- The`Cnt-x Cnt-x` (exchange point/mark) is not implemented. Instead, the current code binds this command to `Cnt-x Cnt-X` instead. Note the capitalization in the second keystroke. (It's a code re-entry problem that needs fixing.)

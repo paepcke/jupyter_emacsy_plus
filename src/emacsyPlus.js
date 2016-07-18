@@ -96,6 +96,7 @@ function EmacsyPlus() {
     var ctrlInProgress = false;
 
     var mBufName   = 'minibuffer';
+    var minibufMonitored = false;
     var iSearcher  = null;
     var savedPlace = undefined;
     // For remembering what user searched for
@@ -103,7 +104,9 @@ function EmacsyPlus() {
     // cnt-s in an empty minibuf:
     var prevSearchTerm = null;
 
+    // Keydown and mouse click listeners while in minibuf:
     var mBufKeyListener = null;
+    var mBufClickListener = null;
 
     var constructor = function() {
     
@@ -778,6 +781,15 @@ function EmacsyPlus() {
         // Called with hidden first arg: 'this',
         // which is the minibuffer.
 
+        // If abortISearch() was called, and 
+        // a keydown was already in the queue,
+        // we'll know it here, b/c abortISearch()
+        // will have set iSearcher to null.
+
+        if (iSearcher === null) {
+            return;
+        }
+
         // If doing a regex search, 'normal',
         // i.e. non-error minibuf background
         // is green:
@@ -814,7 +826,8 @@ function EmacsyPlus() {
 
         var mBuf = this
         var bufVal = mBuf.value;
-        
+        iSearcher.setCaseSensitivity(false);
+
         // If minibuffer empty, take opportunity
         // to ensure that isearcher's current search
         // term is also empty:
@@ -827,10 +840,12 @@ function EmacsyPlus() {
             // run the search as if it had been
             // entered by hand:
             if (bufVal.length === 0 && prevSearchTerm !== null) {
-                // Trying to seed the minibuffer with previous
-                // search term gets us into trouble. No time
-                // to debug:
-                //*****true;
+                
+                // If prev search term had any caps, set case
+                // sensitivity:
+                if (prevSearchTerm.search(/[A-Z]/) > -1) {
+                    iSearcher.setCaseSensitivity(true);
+                }
                 var matchedSubstr = iSearcher.playSearch(prevSearchTerm);
                 if (matchedSubstr.length < prevSearchTerm.length) {
                     mBuf.style.backgroundColor = 'red';
@@ -894,6 +909,14 @@ function EmacsyPlus() {
     }
 
     var abortISearch = function(restoreCursor) {
+        // If abortISearch is called twice,
+        // iSearcher will be null. In that case,
+        // just return. This way it's safe to
+        // call abortISearch multiple times:
+        if (iSearcher === null) {
+            return;
+        }
+        
         removeMiniBuf();
 
         if (typeof(restoreCursor) === 'undefined') {
@@ -943,6 +966,13 @@ function EmacsyPlus() {
     }
 
     var monitorMiniBuf = function(callback) {
+
+        // Protect against being called multiple
+        // times:
+        if (minibufMonitored) {
+            return;
+        }
+        
         var miniBuf = getMiniBufFromToolbar();
         miniBuf.focus();
         clearAllSelections();
@@ -955,12 +985,27 @@ function EmacsyPlus() {
             // we can provide the miniBuf environment:
             callback.call(miniBuf, evt);
         }
+        mBufClickListener = function(evt) {
+            // If clicked on minibuffer, do nothing.
+            // If clicked outside, abort search:
+            if (evt.target === miniBuf) {
+                miniBuf.focus();
+                return;
+            }
+            
+            abortISearch(false); // don't restore cursor, leave it at selection.
+            document.removeEventListener("mousedown", mBufClickListener);
+        }
         getToolbarDomEl().addEventListener("keydown", mBufKeyListener);
+        document.addEventListener("mousedown", mBufClickListener);
+        minibufMonitored = true;
         return miniBuf;
     }
 
     var stopMonitorMiniBuf = function(callback) {
         getToolbarDomEl().removeEventListener("keydown", mBufKeyListener);
+        document.removeEventListener("mousedown", mBufClickListener);
+        minibufMonitored = false;
     }
 
     var getMiniBufFromToolbar = function() {
