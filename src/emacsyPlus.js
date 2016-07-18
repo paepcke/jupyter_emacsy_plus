@@ -1,13 +1,11 @@
 /* TODO:
-- Maybe: cursor movements after set mark: make selection; but shut
-  that off automatically 
-- Connect c-x c-s with my Jupyter snapshot
+- Connect c-x c-s with my Jupyter snapshot setup.
 */
 
 /*
   Implements Emacs keybindings for CodeMirror editors.
   To customize, modify buildEmacsyPlus.emacsyPlusMap
-  and buildEmacsyPlus.ctrlXMap.
+  and buildEmacsyPlus.ctrlXMap below.
 
 Warning: both Firefox and Chrome have Alt/Cmd-w bound to
 'Close tab.' You'll want to disable those bindings if you 
