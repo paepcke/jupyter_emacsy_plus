@@ -9,10 +9,10 @@ An Emacs mode for Jupyter that is closer to Gnu Emacs than the built-in *emacsy*
 - Cnt-x [?]> commands are supported via a secondary keymap dispatch.
 - Key binding changes accomplished by changing a table, similar to what would happen in a .emacs file.
 
-**Note**: Key **F1** or **Ctrl-x h** in a Jupyter cell show active bindings.
+**Note**: Key **F1** or **Ctrl-x h** in a Jupyter cell show active bindings. It's a pop-up, so watch out for popup blocker if the help window does not appear.
 
 
-Current compatibility: Runs on Chrome/Firefox MAC OSX. On Linux both browsers have problems with incremental search. Other commands work there.
+Current compatibility: Runs on Chrome/Firefox MAC OSX/Linux.
 
 ###*Installation*
 
