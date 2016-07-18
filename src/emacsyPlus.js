@@ -98,6 +98,10 @@ function EmacsyPlus() {
     var mBufName   = 'minibuffer';
     var iSearcher  = null;
     var savedPlace = undefined;
+    // For remembering what user searched for
+    // in preceeding iSearch. Used to support
+    // cnt-s in an empty minibuf:
+    var prevSearchTerm = null;
 
     var mBufKeyListener = null;
 
@@ -785,6 +789,9 @@ function EmacsyPlus() {
 
         // cnt-g or esc?
         if (evt.abort) {
+            // Save the current search term in case
+            // we want to reuse it:
+            prevSearchTerm = iSearcher.searchTerm();
             var restoreCursor = true;
             if (evt.abort === 'esc') {
                 restoreCursor = false;
@@ -798,21 +805,35 @@ function EmacsyPlus() {
             evt.stopPropagation();
             return;
         }
+
+        var mBuf = this
+        var bufVal = mBuf.value;
         
         // another cnt-s while in minibuf:
         if (evt.search === 'nxtForward') {
-            iSearcher.searchAgain();
+            // If minibuffer is empty, fill in
+            // the previous search term and
+            // run the search as if it had been
+            // entered by hand:
+            if (bufVal.length === 0 && prevSearchTerm !== null) {
+                var matchedSubstr = iSearcher.playSearch(prevSearchTerm);
+                if (matchedSubstr.length < prevSearchTerm.length) {
+                    mBuf.style.backgroundColor = 'red';
+                }
+                mBuf.value = matchedSubstr;
+                bufVal = mBuf.value;
+            } else {
+                var res = iSearcher.searchAgain();
+                if (res === null) {
+                    mBuf.style.backgroundColor = 'red';                
+                }
+            }
             evt.preventDefault();
             evt.stopPropagation();
             return;
         }
+        // If it's 'nxtBackward', then do that, once it's implemented.
 
-        // **** If evt.search === 'nxtForward',
-        //      then call iSearcher.next();
-        //      If it's 'nxtBackward', then do that.
-
-        var mBuf = this
-        var bufVal = mBuf.value;
         mBuf.style.backgroundColor = normalColor;            
         mBuf.focus();
 
@@ -962,6 +983,10 @@ function EmacsyPlus() {
         evt.search = undefined;
 
         if (ctrlInProgress) {
+            //*******
+            alert('Ctrl in progress')
+            //*******            
+            // Ctrl-key held down, then key pressed:
             switch(evt.key) {
             case 'g':
                 ctrlInProgress = false;
@@ -979,18 +1004,26 @@ function EmacsyPlus() {
             }
         }
 
+        // In iSearch mode: exit search,
+        // leave cursor at found spot.
+        // For regex search: execute the
+        // search:
         if (keyCode === ENTER_CODE) {
             ctrlInProgress = false;
             evt.abort = 'esc';
             return true;
         }
-        
+
+        // Exit search, leave cursor where
+        // search found spot:
         if (keyCode === ESC_CODE) {
             ctrlInProgress = false;
             evt.abort = 'esc';
             return true;
         }
 
+        // Just register that the next
+        // key will be a ctrl-x key
         if (keyCode === CTRL_CODE) {
             ctrlInProgress = true;
             return false;
@@ -1090,8 +1123,8 @@ Place = function(initObj) {
                     case 'cellIndx':
                         thisPlace.cellIndx = value(); // value is a getter method
                         break;
-                    case 'inOutput':
-                        thisPlace.inOutput = value();
+                    case 'inCellArea':
+                        thisPlace.inCellArea = value();
                         break;
                     case 'searchStart':
                         thisPlace.searchStart = value();
@@ -1119,8 +1152,8 @@ Place = function(initObj) {
             value : value, // method
             cellIndx : cellIndx, // getter
             setCellIndx : setCellIndx, // setter            
-            inOutput : inOutput, // getter
-            setInOutput : setInOutput, // setter            
+            inCellArea : inCellArea, // getter
+            setInCellArea : setInCellArea, // setter            
             searchStart : searchStart, // getter
             setSearchStart : setSearchStart, // setter            
             selection : selection, // getter
@@ -1143,13 +1176,13 @@ Place = function(initObj) {
         return newIndx;
     }
 
-    var inOutput = function() {
-        return thisPlace.inOutput;
+    var inCellArea = function() {
+        return thisPlace.inCellArea;
     }
 
-    var setInOutput = function(newInOutput) {
-        thisPlace.inOutput = newInOutput;
-        return newInOutput;
+    var setInCellArea = function(newArea) {
+        thisPlace.inCellArea = newArea;
+        return newArea;
     }
 
     var searchStart = function() {
@@ -1185,7 +1218,7 @@ Place = function(initObj) {
         initialCursor = initialCell.code_mirror.doc.getCursor();
         
         return {cellIndx : Jupyter.notebook.find_cell_index(initialCell), 
-                inOutput : false,
+                inCellArea : 'input',
                 searchStart : 0,
                 selection : {anchor : {line : initialCursor.line, ch : initialCursor.ch},
                              head   : {line : initialCursor.line, ch : initialCursor.ch}
@@ -1198,7 +1231,7 @@ Place = function(initObj) {
           Returns the copy of a place.
         */
         thisPlace.cellIndx    = other.cellIndx();
-        thisPlace.inOutput    = other.inOutput();
+        thisPlace.inCellArea    = other.inCellArea();
         thisPlace.searchStart = other.searchStart();
         copySel(other.selection().anchor, thisPlace.selection().anchor);
         copySel(other.selection().head, thisPlace.selection().head);
@@ -1232,7 +1265,15 @@ ISearcher = function(initialSearchTxt, isReSearch) {
           via setters/getters. See return value of constructor.
 */
 
-    var searchTxt = '';
+    // All the areas within a cell to search through:
+    var searchAreas = ['input', 'output'];
+
+    // Install a 'class variable' that holds the
+    // search term across instances:
+    if (typeof(ISearcher.prototype.searchTerm) === 'undefined') {
+        ISearcher.prototype.searchTerm = '';
+    }
+
     var reSafeTxt = '';
     var reSearch = false;
 
@@ -1257,11 +1298,11 @@ ISearcher = function(initialSearchTxt, isReSearch) {
             reSearch = true;
         }
         if (typeof(initialSearchTxt) === 'string') {
-            searchTxt = initialSearchTxt;
+            setSearchTerm(initialSearchTxt);
             if (reSearch) {
-                reSafeTxt = searchTxt;
+                reSafeTxt = searchTerm();
             } else {
-                reSafeTxt = escReSpecials(searchTxt);
+                reSafeTxt = escReSpecials(searchTerm());
             }
         }
 
@@ -1276,12 +1317,16 @@ ISearcher = function(initialSearchTxt, isReSearch) {
             curPlace : curPlace, // getter
             setCurPlace : setCurPlace, //setter
             initialPlace : initialPlace, // getter
-            regexSearch : regexSearch // getter
+            regexSearch : regexSearch, // getter
+            playSearch : playSearch
         })
     }
-
     var searchTerm = function() {
-        return searchTxt;
+        return ISearcher.prototype.searchTerm;
+    }
+
+    var setSearchTerm = function(newTerm) {
+        ISearcher.prototype.searchTerm = newTerm;
     }
 
     var initialPlace = function() {
@@ -1311,13 +1356,53 @@ ISearcher = function(initialSearchTxt, isReSearch) {
     }
 
 
+    var playSearch = function(term, fromEmpty) {
+        /*
+          Run a series of incremental searches
+          that mimic successive user input of
+          characters. If fromEmpty is left out,
+          the existing searchTerm is first wiped
+          out.
 
+          :param term: search term to play
+          :type term: string
+          :param fromEmpty: if true, or left out: first clear 
+             existing search term. Else append to existing.
+          :returns (possibly) partial string up to 
+             which a match was achieved.
+          :rtype: string
+
+        */
+        var initialSearchTerm;
+        if (typeof(fromEmpty) === 'undefined' || fromEmpty) {
+            setSearchTerm('');
+            initialSearchTerm = '';
+        } else {
+            initialSearchTerm = searchTerm();
+        }
+        for (let i=0; i<term.length; i++) {
+            if (addChar(term[i]) === null) {
+                return initialSearchTerm + term.slice(i);
+            }
+        }
+        return initialSearchTerm + term;
+    }
 
     var clearSelection = function(cm) {
+        /*
+          NOTE: clears selection within a CodeMirror node.
+                For clearing selections in the HTML page,
+                see clearDivSelection().
+         */
         cm.doc.setSelection(cm.doc.getCursor(), cm.doc.getCursor());
     }
 
     var clearAllSelections = function() {
+        /*
+          NOTE: clears selection within a CodeMirror node.
+                For clearing selections in the HTML page,
+                see clearDivSelection().
+         */
         for (let cell of cells) {
             clearSelection(cell.code_mirror);
         }
@@ -1451,105 +1536,266 @@ ISearcher = function(initialSearchTxt, isReSearch) {
             curPlace().setCellIndx(i);
             var cell = cells[i];
             var cm  = cell.code_mirror;
-            var txt = cell.get_text();
-            var re  = null;
-            // Note: we use String.search(re)
-            // for searching whether or not the
-            // UI presents regex or incremental
-            // search. The difference is in how
-            // the search string is escaped.
-            if (caseSensitivity()) {
-                re = new RegExp(reSafeTxt);
-            } else {
-                re = new RegExp(reSafeTxt, 'i'); // ignore case
-            }
+            var curSearchArea = curPlace().inCellArea();
+            // Will hold cell area text:
+            var txt = null;
 
-            var txtToSearch = null;
-            if (typeof(repeatSearch) === 'undefined') {
+            // Go through each area, starting with the one
+            // the previous search left off in. The weird
+            // termination test fakes a 'finally' clause.
+            // when areaIndx reaches the number of areas in
+            // a cell, the second OR expression is executed.
+            // That function MUST return false; else infinite
+            // loop:
+
+            var initialAreaIndx = searchAreas.findIndex(function(workArea)
+                                                    {return workArea === curSearchArea}
+                                                    );
+            for (let areaIndx=initialAreaIndx;
+                 areaIndx<searchAreas.length || prepForNextCell(curPlace);
+                 areaIndx++) {
+
+                // 'input', 'output', ...
+                var area2Search = searchAreas[areaIndx];
+                curPlace().setInCellArea(area2Search);
+
+                // Grab text out of the cell, depending
+                // on which of the areas we are searching:
+                try {
+                    txt = getTextFromCell(cell, area2Search);
+                } catch(err) {
+                    // Next cell area to look into:
+                    continue;
+                }
+
+                var re  = null;
+                // Note: we use String.search(re)
+                // for searching whether or not the
+                // UI presents regex or incremental
+                // search. The difference is in how
+                // the search string is escaped.
+                if (caseSensitivity()) {
+                    re = new RegExp(reSafeTxt);
+                } else {
+                    re = new RegExp(reSafeTxt, 'i'); // ignore case
+                }
+
+                var txtToSearch = null;
+
+                // Looking for next occurrence of already
+                // found search term?: if so, and we found one,
+                // point the search cursor past that one
+                // we found so we don't re-find it:
+                if (repeatSearch &&
+                    txt.slice(curPlace().searchStart()).startsWith(searchTerm())){
+                    curPlace().setSearchStart(curPlace().searchStart() +
+                                              searchTerm().length)
+                }
+
                 txtToSearch = txt.slice(curPlace().searchStart());
-            } else {
-                // **** Really?:
-                txtToSearch = txt.slice(curPlace().setSearchStart(curPlace().searchStart() +
-                                                                  this.searchTerm().length))
+                var res = re.exec(txtToSearch);
+
+                if (res === null) {
+                    curPlace().setSearchStart(0);
+                    continue; // next (input/output) area or cell
+                }
+
+                // Got a match:
+
+                if (area2Search === 'output') {
+                    // Ensure user sees the output area:
+                    cell.expand_output();
+                }
+
+                // Get match index in terms of cell line/ch, given
+                // the match index within the full cell content:
+                var startOfMatch = curPlace().searchStart() + res.index;
+                var selStart = lineChIndx(txt, startOfMatch);
+
+                // In the all-in-one cell string we are now
+                // at where search started this time (searchStart),
+                // plus result of the search, plus length of
+                // search word, which we will select below:
+                curPlace().setSearchStart(startOfMatch);
+
+                curPlace().selection().anchor.line = selStart.line;
+                curPlace().selection().anchor.ch = selStart.ch;
+
+                curPlace().selection().head.line = selStart.line;
+                // Res is array of occurrences. So length of matched
+                // text is available from that even for regex search
+                // the the search term has the regex special chars:
+                curPlace().selection().head.ch = selStart.ch + res[0].length;
+                // Save this newest (i.e. current) position:
+                pushPlace(curPlace());
+                
+                // Selection techniques are different for input vs. output
+                // area. Could maybe unified. Input areas use CodeMirror
+                // selections. Output areas use browser selections:
+                if (area2Search === 'input') {
+                    clearSelection(cm);
+                    cm.doc.setSelection(curPlace().selection().anchor,
+                                        curPlace().selection().head);
+                } else {
+                    clearDivSelection();
+                    setDivSelectionRange(cell.output_area.selector[0],
+                                         curPlace().selection().anchor.ch,
+                                         curPlace().selection().head.ch
+                                        )
+                }
+                Jupyter.notebook.scroll_manager.scroll_to(cell.element);
+                return curPlace();
             }
-            var res = re.exec(txtToSearch);
-
-            if (res === null) {
-                curPlace().nullTheSelection();
-                curPlace().setSearchStart(0);
-                continue; // next cell
-            }
-
-            // Got a match:
-
-            // Get match index in terms of cell line/ch, given
-            // the match index within the full cell content:
-            var startOfMatch = curPlace().searchStart() + res.index;
-            var selStart = lineChIndx(txt, startOfMatch);
-
-            // In the all-in-one cell string we are now
-            // at where search started this time (searchStart),
-            // plus result of the search, plus length of
-            // search word, which we will select below:
-            curPlace().setSearchStart(startOfMatch);
-
-            curPlace().selection().anchor.line = selStart.line;
-            curPlace().selection().anchor.ch = selStart.ch;
-
-            curPlace().selection().head.line = selStart.line;
-            // Res is array of occurrences. So length of matched
-            // text is available from that even for regex search
-            // the the search term has the regex special chars:
-            curPlace().selection().head.ch = selStart.ch + res[0].length;
-            // Save this newest (i.e. current) position:
-            pushPlace(curPlace());
-            
-            clearSelection(cm);
-            cm.doc.setSelection(curPlace().selection().anchor,
-                                curPlace().selection().head);
-            Jupyter.notebook.scroll_manager.scroll_to(cell.element);
-            return curPlace();
         }
         return null;
     }
 
+    var getTextFromCell = function(cell, area) {
+        /*
+          Given a cell and an area name, return
+          text from that cell's area.
+
+          :param cell: a Jupyter cell instance
+          :type cell: Cell
+          :param area: One of 'input', 'output'.
+          :type area: string
+        */
+        if (searchAreas.indexOf(area) === -1) {
+            throw `Unknown area '${area}'`;
+        }
+
+        if (area === 'input') {
+            return cell.get_text();
+        }
+        // Output area:
+
+        try {
+            var output = cell.output_area.outputs[0];
+        } catch(err) {
+            // Cell does not have an output area:
+            throw `Cell type '${cell.cell_type}' has no output area.`
+        }
+        var outType = output.output_type;
+        if (outType === 'display_data') {
+            return output.data['text/plain']
+        } else if (outType === 'stream') {
+            return output.text
+        } else {
+            throw `Area output '${outType}' unknown`;
+        }
+    }
+
+    var prepForNextCell = function(curPlace) {
+        /*
+          Called when all areas of a cell have
+          been searched, and the search advances
+          to a new cell. This function MUST
+          return false, else the for loop in which
+          it is used goes infinite.
+         */
+        curPlace().nullTheSelection();
+        curPlace().setSearchStart(0);
+        // Moving on to a new cell; reset current
+        // cell area to the first in the sequence
+        // of cell areas:
+        curPlace().setInCellArea(searchAreas[0]);
+        return false;
+    }
+
+    var searchOutputArea = function(re, cell) {
+        var outAreaTxt = cell.output_area.outputs[0].text;
+        cell.collapsed
+    }
+
+
     var searchAgain = function() {
-        return this.next(true); // true: skip one result
+        return next(true); // true: skip one result
     }
     
     var addChar = function(chr) {
-        searchTxt += chr;
+        var curTerm = searchTerm();
+        curTerm += chr;
+        setSearchTerm(curTerm);
         if (! reSearch) {
             // Update the isearch-needed regex escapes
-            reSafeTxt = escReSpecials(searchTxt)
+            reSafeTxt = escReSpecials(searchTerm())
         } else {
-            reSafeTxt = searchTxt;
+            reSafeTxt = searchTerm();
             // For regex search: don't search incrementally:
             return true;
         }
         goPrevMatch();
-        return this.next();
+        //*****return this.next();
+        return next();
     }
         
     var chopChar = function() {
-        searchTxt = searchTxt.slice(0, searchTxt.length-1);
+        setSearchTerm(searchTerm().slice(0, searchTerm().length-1));
         if (! reSearch) {
             // Update the isearch-needed regex escapes
-            reSafeTxt = escReSpecials(searchTxt)
+            reSafeTxt = escReSpecials(searchTerm())
         } else {
-            reSafeTxt = searchTxt;
+            reSafeTxt = searchTerm();
             // For regex search: don't search incrementally:
             return true;
         }
         goPrevMatch();
-        if (searchTxt.length === 0){
+        if (searchTerm().length === 0){
             clearSelection(cells[curPlace().cellIndx()].code_mirror);
             // Return to initial position:
             pushPlace(_initialPlace);
         }
-        return this.next();
+        return next();
+    }
+
+    var setDivSelectionRange = function(cellDiv, start, end) {
+        /* Given a div that includes at least one text node, and a range, 
+           select the first text. 
+           
+           Jupyter: for the main (input) cell area: cell.input[0]
+                    for output area: cell.output_area.selector[0]
+        */
+
+        var txtNodes = getTextNodesIn(cellDiv);
+        if (txtNodes.length === 0) {
+            throw 'Given div does not contain any text nodes.'
+        }
+        var txtNode = txtNodes[0];
+        if (start < 0 || start > end) {
+            throw `Selection end must be positive and less than end: -1<=0<${end}, was ${start}`;
+        }
+        if (end > txtNode.length) {
+            throw `Selection end must not exceed text length, but ${end} > ${txtNode.length}`;
+        }
+        var selection = window.getSelection();
+        var range = document.createRange();
+        range.selectNodeContents(cellDiv);
+        range.setStart(txtNode, start)
+        range.setEnd(txtNode, end)
+        selection.removeAllRanges()
+        selection.addRange(range)
+    }
+
+    var clearDivSelection = function() {
+        window.getSelection().removeAllRanges();
+    }
+    
+    var getTextNodesIn = function(node) {
+        /*
+          Given a div element, return all text nodes inside it.
+          From http://stackoverflow.com/questions/6240139/highlight-text-range-using-javascript
+        */
+        var textNodes = [];
+        if (node.nodeType == 3) {
+            textNodes.push(node);
+        } else {
+            var children = node.childNodes;
+            for (var i = 0, len = children.length; i < len; ++i) {
+                textNodes.push.apply(textNodes, getTextNodesIn(children[i]));
+            }
+        }
+        return textNodes;
     }
 
     return constructor(initialSearchTxt, isReSearch);
 }
-
