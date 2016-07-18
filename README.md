@@ -1,8 +1,6 @@
 ##Enhanced Emacs Mode for CodeMirror and Jupyter
 
-An Emacs mode for Jupyter that is closer to Gnu Emacs than the built-in *emacsy* mode. Built for Jupyter 4.x.
-
-*EmacsyPlus* creates a keymap closer to Emacs than the *emacsy* map provided with CodeMirror. For instance, the following are provided:
+An Emacs mode for Jupyter that is closer to Gnu Emacs than the built-in *emacsy* mode. Built for Jupyter 4.x. For instance, the following are provided:
 
 - Named content registers
 - Named location registers
@@ -11,9 +9,10 @@ An Emacs mode for Jupyter that is closer to Gnu Emacs than the built-in *emacsy*
 - Cnt-x [?]> commands are supported via a secondary keymap dispatch.
 - Key binding changes accomplished by changing a table, similar to what would happen in a .emacs file.
 
-**Note**: Key **F1** in a Jupyter cell shows active bindings.
+**Note**: Key **F1** or **Ctrl-x h** in a Jupyter cell show active bindings.
 
-Disclaimer: I tried to test on Linux and Mac, in both Chrome and Firefox. I may well have missed cases. Let me know.
+
+Current compatibility: Runs on Chrome/Firefox MAC OSX. On Linux both browsers have problems with incremental search. Other commands work there.
 
 ###*Installation*
 

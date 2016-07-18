@@ -231,6 +231,7 @@ function EmacsyPlus() {
         emacsyPlusMap['Ctrl-W'] = "killRegionCmd";
         emacsyPlusMap['Alt-W']  = "copyCmd";
         if (os === 'Mac') {emacsyPlusMap['Cmd-W']  = "copyCmd"};
+        emacsyPlusMap['Ctrl-H'] = "delCharBefore";
         emacsyPlusMap['Ctrl-D'] = "delCharAfter";
         emacsyPlusMap['Alt-D']  = "delWordAfterCmd";
         if (os === 'Mac') {emacsyPlusMap['Cmd-D']  = "delWordAfterCmd"};
@@ -308,6 +309,7 @@ function EmacsyPlus() {
         ctrlXMap['u'] = "undo";
         ctrlXMap['/'] = "pointToRegisterCmd";
         ctrlXMap['j'] = "jumpToRegisterCmd";
+        ctrlXMap['h'] = "helpCmd";
         ctrlXMap['Ctrl-X'] = "xchangePtMarkCmd"; // NOTE: Cnt-x Cnt-X (2nd must be caps)
 
         return emacsyPlusMap;
