@@ -741,7 +741,10 @@ function EmacsyPlus() {
         // service routing iSearchHandler will add or
         // remove letters.
         iSearcher  = ISearcher();
-
+        // Ensure the persistent search term from last
+        // search is cleared out:
+        iSearcher.emptySearchTerm();
+        
         // Present the minibuffer, get focus to it,
         // and behave isearchy via the iSearchHandler:
         var mBuf = monitorMiniBuf(iSearchHandler)
@@ -754,6 +757,9 @@ function EmacsyPlus() {
         // service routing iSearchHandler will add or
         // remove letters.
         iSearcher  = ISearcher('', true); // true: be regex search
+        // Ensure the persistent search term from last
+        // search is cleared out:
+        iSearcher.emptySearchTerm();
 
         // Present the minibuffer, get focus to it,
         // and behave isearchy via the iSearchHandler:
@@ -809,6 +815,11 @@ function EmacsyPlus() {
         var mBuf = this
         var bufVal = mBuf.value;
         
+        // If minibuffer empty, take opportunity
+        // to ensure that isearcher's current search
+        // term is also empty:
+        // iSearcher.emptySearchTerm();
+        
         // another cnt-s while in minibuf:
         if (evt.search === 'nxtForward') {
             // If minibuffer is empty, fill in
@@ -816,6 +827,10 @@ function EmacsyPlus() {
             // run the search as if it had been
             // entered by hand:
             if (bufVal.length === 0 && prevSearchTerm !== null) {
+                // Trying to seed the minibuffer with previous
+                // search term gets us into trouble. No time
+                // to debug:
+                //*****true;
                 var matchedSubstr = iSearcher.playSearch(prevSearchTerm);
                 if (matchedSubstr.length < prevSearchTerm.length) {
                     mBuf.style.backgroundColor = 'red';
@@ -823,6 +838,7 @@ function EmacsyPlus() {
                 mBuf.value = matchedSubstr;
                 bufVal = mBuf.value;
             } else {
+                // Cnt-s after a term was found:
                 var res = iSearcher.searchAgain();
                 if (res === null) {
                     mBuf.style.backgroundColor = 'red';                
@@ -982,10 +998,21 @@ function EmacsyPlus() {
         evt.abort = false;
         evt.search = undefined;
 
-        if (ctrlInProgress) {
-            //*******
-            alert('Ctrl in progress')
-            //*******            
+        // Special care about two ctrl-s in a row
+        // at start of isearch: first ctrl-s is
+        // seen by Jupyter cell, not this routine.
+        // That first ctrl-s opens the minibuffer,
+        // and from then on this routine catches
+        // keydown events. So ctrl-keys and letter
+        // keys are processed sequentially. We see
+        // the ctrl going down, then the other letter.
+        // When we see the ctrl key go down, we
+        // set ctrlInProgress true so we enter the
+        // following switch. But if a ctrl-something
+        // comes in as first chr after minibuffer opens,
+        // we only see the char. BUT: then the evt.ctrlKey
+        // will be set:
+        if (ctrlInProgress || evt.ctrlKey) {
             // Ctrl-key held down, then key pressed:
             switch(evt.key) {
             case 'g':
@@ -994,12 +1021,17 @@ function EmacsyPlus() {
                 return true;
                 break;
             case 's':
+                ctrlInProgress = false;                
                 evt.search = 'nxtForward';
                 return true;
                 break;
             case 'r':
                 evt.search = 'nxtBackward';
                 return true;
+                break;
+            default:
+                ctrlInProgress = false; // unknown ctrl-key
+                return false; // have caller do nothing
                 break;
             }
         }
@@ -1023,13 +1055,12 @@ function EmacsyPlus() {
         }
 
         // Just register that the next
-        // key will be a ctrl-x key
+        // key will be a ctrl-<something> key
         if (keyCode === CTRL_CODE) {
             ctrlInProgress = true;
             return false;
-        } else if (!evt.ctrlKey) {
-            ctrlInProgress = false;
         }
+
         var valid =
             (keyCode === BS_CODE)                     ||
             (keyCode > 47  && keyCode < 58)          || // number keys
@@ -1312,6 +1343,7 @@ ISearcher = function(initialSearchTxt, isReSearch) {
             addChar : addChar, // method
             chopChar : chopChar, // method
             searchTerm : searchTerm, // getter
+            emptySearchTerm : emptySearchTerm, // method
             caseSensitivity : caseSensitivity, // getter
             setCaseSensitivity : setCaseSensitivity, // setter
             curPlace : curPlace, // getter
@@ -1327,6 +1359,10 @@ ISearcher = function(initialSearchTxt, isReSearch) {
 
     var setSearchTerm = function(newTerm) {
         ISearcher.prototype.searchTerm = newTerm;
+    }
+
+    var emptySearchTerm = function() {
+        setSearchTerm('');
     }
 
     var initialPlace = function() {
