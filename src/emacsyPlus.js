@@ -696,6 +696,7 @@ function EmacsyPlus() {
         }
         CodeMirror.emacsArea.killedTxt = cm.doc.getSelection();
         cm.doc.replaceSelection("");
+        cm.doc.setExtending(false);
         return;
     }
 
@@ -1108,12 +1109,13 @@ function EmacsyPlus() {
 
         var valid =
             (keyCode === BS_CODE)                     ||
-            (keyCode > 47  && keyCode < 58)          || // number keys
-            (keyCode == 32)                          || // spacebar
-            (keyCode > 64  && keyCode < 91)          || // letter keys
-            (keyCode > 95  && keyCode < 112)         || // numpad keys
-            (keyCode > 185 && keyCode < 193)         || // ;=,-./` (in order)
-            (keyCode > 218 && keyCode < 223);           // [\]' (in order)
+            (keyCode > 47  && keyCode < 58)   || // number keys
+            (keyCode == 32)                   || // spacebar to tilde
+            (keyCode >= 48 && keyCode < 91)   || // letter/number keys
+            (keyCode > 95  && keyCode < 112)  || // numpad keys
+            (keyCode == 173)                  || // underscore
+            (keyCode > 185 && keyCode < 193)  || // ;=,-./`
+            (keyCode > 218 && keyCode < 223);    // [\]' (in order) 173: _
 
         return valid;
     }
@@ -1558,7 +1560,7 @@ ISearcher = function(initialSearchTxt, isReSearch) {
         safeStr = safeStr.replace(/\+/g, '\\+');
         safeStr = safeStr.replace(/\[/g, '\\[');
         safeStr = safeStr.replace(/\]/g, '\\]');
-        safeStr = safeStr.replace(/\\/g, '\\');
+        safeStr = safeStr.replace(/\\/g, '\\\\');
 
         return RegExp(safeStr);
     }
