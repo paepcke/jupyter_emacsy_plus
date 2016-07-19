@@ -1,4 +1,10 @@
 /* TODO:
+- In iSearch: scroll to make hit visible
+- In iSearch: maybe make selection pop more
+- Reverse search
+- Cnt-L to center
+- Doc: Emacs keys only work in edit mode.
+- Doc: Move some to ReadTheDocs
 - Connect c-x c-s with my Jupyter snapshot setup.
 */
 
@@ -1882,3 +1888,23 @@ ISearcher = function(initialSearchTxt, isReSearch) {
 
     return constructor(initialSearchTxt, isReSearch);
 }
+
+//*********************
+String.prototype.regexLastIndexOf = function(re, startpos) {
+    re = (re.global) ? re : new Rep(re.source, "g" + (re.ignoreCase ? "i" : "") + (re.multiLine ? "m" : ""));
+    if(typeof (startpos) == "undefined") {
+        startpos = this.length;
+    } else if(startpos < 0) {
+        startpos = 0;
+    }
+    var stringToWorkWith = this.substring(0, startpos + 1);
+    var lastIndexOf = -1;
+    var nextStop = 0;
+    var result;
+    while((result = re.exec(stringToWorkWith)) != null) {
+        lastIndexOf = result.index;
+        re.lastIndex = ++nextStop;
+    }
+    return lastIndexOf;
+}
+//*********************
