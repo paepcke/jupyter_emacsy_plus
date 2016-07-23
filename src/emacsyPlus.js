@@ -851,8 +851,13 @@ function EmacsyPlus() {
         // term is also empty:
         // iSearcher.emptySearchTerm();
         
-        // another cnt-s while in minibuf:
-        if (evt.search === 'nxtForward') {
+        // Another ctrl-s or ctrl-r while in minibuf:
+        if (evt.search === 'nxtForward' ||
+            evt.search === 'nxtBackward') {
+
+            evt.search === 'nxtForward' ?
+                iSearcher.setReverse(false) : iSearcher.setReverse(true);
+            
             // If minibuffer is empty, fill in
             // the previous search term and
             // run the search as if it had been
@@ -871,7 +876,7 @@ function EmacsyPlus() {
                 mBuf.value = matchedSubstr;
                 bufVal = mBuf.value;
             } else {
-                // Cnt-s after a term was found:
+                // Cnt-s/Cnt-r after a term was found:
                 var res = iSearcher.searchAgain();
                 if (res === null) {
                     mBuf.style.backgroundColor = 'red';                
@@ -881,15 +886,24 @@ function EmacsyPlus() {
             evt.stopPropagation();
             return;
         }
-        // If it's 'nxtBackward', then do that, once it's implemented.
 
         mBuf.style.backgroundColor = normalColor;            
         mBuf.focus();
 
         // Case sensitivity is determined
         // by any of the search term chars
-        // being upper case:
-        if ((bufVal+evt.key).search(/[A-Z]/) > -1) {
+        // being upper case. Check whether
+        // the new key, appended to the current
+        // content of the minibuffer fills that
+        // condition. BUT: control chars are returned
+        // as words, e.g. 'Backspace', which would
+        // turn the search case sensistive. So: only
+        // check with single-length new keystrokes:
+        var newKey = evt.key;
+        if (newKey.length > 1) {
+            newKey = '';
+        }
+        if ((bufVal+newKey).search(/[A-Z]/) > -1) {
             iSearcher.setCaseSensitivity(true);
         }
 
@@ -1314,7 +1328,7 @@ Place = function(initObj) {
         
         return {cellIndx : Jupyter.notebook.find_cell_index(initialCell), 
                 inCellArea : 'input',
-                searchStart : 0,
+                searchStart : undefined,
                 selection : {anchor : {line : initialCursor.line, ch : initialCursor.ch},
                              head   : {line : initialCursor.line, ch : initialCursor.ch}
                             }
@@ -1371,7 +1385,7 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
 
     var reSafeTxt = '';
     var reSearch = false;
-    var reverse  = reverse;
+    var _reverse  = reverse;
 
     var _caseSensitivity = false;
     var cells = Jupyter.notebook.get_cells();
@@ -1391,10 +1405,11 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
 
     var constructor = function(initialSearchTxt, isReSearch, reverse) {
         if (isReSearch) {
+            // Regex search:
             reSearch = true;
         }
         if (reverse) {
-            reverse = true;
+            _reverse = true;
         }
         if (typeof(initialSearchTxt) === 'string') {
             setSearchTerm(initialSearchTxt);
@@ -1418,6 +1433,8 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
             setCurPlace : setCurPlace, //setter
             initialPlace : initialPlace, // getter
             regexSearch : regexSearch, // getter
+            reverse : reverse, // getter
+            setReverse : setReverse, // setter
             playSearch : playSearch
         })
     }
@@ -1457,6 +1474,14 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
 
     var regexSearch = function() {
         return reSearch;
+    }
+
+    var reverse = function() {
+        return _reverse;
+    }
+
+    var setReverse = function(searchReverse) {
+        _reverse = searchReverse;
     }
 
 
@@ -1628,7 +1653,7 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
            result to find the next result for the same
            search str. 
 
-           Instance variable 'reverse' being true indicates backward
+           Instance variable '_reverse' being true indicates backward
            search. It proceeds backward within the current cell area,
            then entering the previous cell area, then entering the
            last area of the previous cell, etc.
@@ -1636,8 +1661,6 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
            :param repeatSearch: if true, skip past current search
               result, and find next occurrence. Default: false.
            :type repeatSearch: bool
-           :param reverse: if true, search backward. Default: false
-           :type reverse: bool
         */
         
         if (typeof(repeatSearch) === 'undefined') {
@@ -1654,13 +1677,13 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
         // Each loop-around looks at all areas of one cell.
         // The loop statement is funky to accommodate looping
         // either forward or backward, depending on whether
-        // 'reverse' is true or not:
+        // '_reverse' is true or not:
         for (let i=curPlace().cellIndx(); 
              function() {
-                 return reverse ? i>=0 : i<cells.length;
+                 return _reverse ? i>=0 : i<cells.length;
              }();
              function() {
-                 return reverse ? i-- : i++;
+                 return _reverse ? i-- : i++;
              }()) {
 
             curPlace().setCellIndx(i);
@@ -1687,10 +1710,10 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
             // is guaranteed to return false:
             for (let areaIndx=initialAreaIndx;
                  function() {
-                     return reverse ? areaIndx>=0 : areaIndx<searchAreas.length;
+                     return _reverse ? areaIndx>=0 : areaIndx<searchAreas.length;
                  }() || prepForNextCell(curPlace);
                  function() {
-                     return reverse ? areaIndx-- : areaIndx++;
+                     return _reverse ? areaIndx-- : areaIndx++;
                  }()) {
 
 
@@ -1720,7 +1743,13 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
                 }
 
                 var txtToSearch = null;
-                var reverseRegexSearchChop = undefined;
+                if (typeof(curPlace().searchStart()) === 'undefined') {
+                    if (_reverse) {
+                        curPlace().setSearchStart(txt.length - 1)
+                    } else {
+                        curPlace().setSearchStart(0)
+                    }
+                }
 
                 // Looking for next occurrence of already
                 // found search term?: if so, and we found one,
@@ -1730,37 +1759,39 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
                 // search cursor will already be in front of the
                 // search term:
                 if (repeatSearch &&
-                    txt.slice(curPlace().searchStart()).startsWith(searchTerm())){
-                    if (reverse) {
-                        // For reverse search, tell the upcoming
-                        // call to regexLastExec() to chop off
-                        // the string to search at the point where
-                        // the current match starts:
-                        reverseRegexSearchChop = curPlace().searchStart();
+                    startsWith(txt.slice(curPlace().searchStart()),
+                               searchTerm(),
+                               caseSensitivity())
+                   ) {
+                    if (_reverse) {
+                        // Set search start such that call to regexLastExec()
+                        // below will be called with startpos===<start of current match>.
+                        // That will cause regexLastExec() to disregard the
+                        // match and beyond, searching instead for a previous
+                        // occurrence of the same match:
+                        curPlace().setSearchStart(curPlace().searchStart() -
+                                                  searchTerm().length);
+
                     } else {
                         // For foward search we set the search cursor
                         // beyond the found part of the str so it won't
                         // be found again:
                         curPlace().setSearchStart(curPlace().searchStart() +
-                                                  searchTerm().length)
+                                                  searchTerm().length);
                     }
                 }
            
                 var res;
-                if (reverse) {
-                    if (typeof(reverseRegexSearchChop) === 'undefined') {
-                        res = regexLastExec(txt, re);
-                    } else {
-                        res = regexLastExec(txt, re, reverseRegexSearchChop);
-                    }
+                if (_reverse) {
+                    res = regexLastExec(txt, re, curPlace().searchStart() + searchTerm().length);
                 } else {
                     txtToSearch = txt.slice(curPlace().searchStart());
                     res = re.exec(txtToSearch);
                 }
 
                 if (res === null) {
-                    if (reverse) {
-                        curPlace().setSearchStart(txt.length-1);
+                    if (_reverse) {
+                        //******curPlace().setSearchStart(txt.length-1);
                     } else {
                         curPlace().setSearchStart(0);
                     }
@@ -1776,7 +1807,7 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
 
                 // Get match index in terms of cell line/ch, given
                 // the match index within the full cell content:
-                var startOfMatch = curPlace().searchStart() + res.index;
+                var startOfMatch = res.index
                 var selStart = lineChIndx(txt, startOfMatch);
 
                 // In the all-in-one cell string we are now
@@ -1861,7 +1892,7 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
           it is used goes infinite.
          */
         curPlace().nullTheSelection();
-        if (reverse) {
+        if (_reverse) {
             curPlace().setSearchStart(searchTerm().length-1);
         } else {
             curPlace().setSearchStart(0);
@@ -1887,7 +1918,7 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
         var curTerm = searchTerm();
         curTerm += chr;
         setSearchTerm(curTerm);
-        if (reverse) {
+        if (_reverse) {
             //****On first char-entry in search: searchStart === 0, not 1!
             curPlace().setSearchStart(curPlace().searchStart() + 1);
         }
@@ -1971,6 +2002,16 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
         return textNodes;
     }
 
+    var startsWith = function(str, searchStr, caseSensitive) {
+        /* Equivalent to JavaScript built-in startswith(), 
+           but with option caseSensitive added.
+        */
+        var regex = new RegExp(searchStr,
+                               (caseSensitive ? "" : "i") 
+                              );
+        return regex.exec(str) !== null;
+    }
+
     var regexLastExec = function(str, re, startpos) {
         /*
           Behaves like regex.exec(), but searches for
@@ -2022,7 +2063,9 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
             prevResult   = copyRegexRes(result);
         }
         // Update the passed-in re's lastIndex property:
-        re.lastIndex = prevResult.index;
+        if (prevResult != null) {
+            re.lastIndex = prevResult.index;
+        }
         
         // The most recent search returned null, which
         // is how we exited the loop above. Return the
