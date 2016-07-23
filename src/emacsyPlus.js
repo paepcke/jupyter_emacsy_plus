@@ -1235,6 +1235,9 @@ Place = function(initObj) {
                     case 'inCellArea':
                         thisPlace.inCellArea = value();
                         break;
+                    case 'firstSrchInArea':
+                        thisPlace.firstSrchInArea = value();
+                        break;
                     case 'searchStart':
                         thisPlace.searchStart = value();
                         break;
@@ -1262,7 +1265,9 @@ Place = function(initObj) {
             cellIndx : cellIndx, // getter
             setCellIndx : setCellIndx, // setter            
             inCellArea : inCellArea, // getter
-            setInCellArea : setInCellArea, // setter            
+            setInCellArea : setInCellArea, // setter
+            firstSrchInArea : firstSrchInArea, // getter
+            setFirstSrchInArea : setFirstSrchInArea, // setter
             searchStart : searchStart, // getter
             setSearchStart : setSearchStart, // setter            
             selection : selection, // getter
@@ -1292,6 +1297,15 @@ Place = function(initObj) {
     var setInCellArea = function(newArea) {
         thisPlace.inCellArea = newArea;
         return newArea;
+    }
+
+    var firstSrchInArea = function() {
+        return thisPlace.firstSrchInArea;
+    }
+
+    var setFirstSrchInArea = function(isFirst) {
+        thisPlace.firstSrchInArea = isFirst;
+        return isFirst;
     }
 
     var searchStart = function() {
@@ -1328,6 +1342,7 @@ Place = function(initObj) {
         
         return {cellIndx : Jupyter.notebook.find_cell_index(initialCell), 
                 inCellArea : 'input',
+                firstSrchInArea : true,
                 searchStart : undefined,
                 selection : {anchor : {line : initialCursor.line, ch : initialCursor.ch},
                              head   : {line : initialCursor.line, ch : initialCursor.ch}
@@ -1341,6 +1356,7 @@ Place = function(initObj) {
         */
         thisPlace.cellIndx    = other.cellIndx();
         thisPlace.inCellArea    = other.inCellArea();
+        thisPlace.firstSrchInArea = other.firstSrchInArea();
         thisPlace.searchStart = other.searchStart();
         copySel(other.selection().anchor, thisPlace.selection().anchor);
         copySel(other.selection().head, thisPlace.selection().head);
@@ -1364,7 +1380,7 @@ Place = function(initObj) {
 
     /* ----------------------------  Class ISearcher  ---------- */
 
-ISearcher = function(initialSearchTxt, isReSearch, reverse) {
+ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
 
     /* Handles incremental and regex searches across entire
        notebook. Scrolls to hits.
@@ -1385,7 +1401,7 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
 
     var reSafeTxt = '';
     var reSearch = false;
-    var _reverse  = reverse;
+    var _reverse  = searchReverse;
 
     var _caseSensitivity = false;
     var cells = Jupyter.notebook.get_cells();
@@ -1403,13 +1419,15 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
     // to initial cell/cursor
     var _curPlace = Place();
 
-    var constructor = function(initialSearchTxt, isReSearch, reverse) {
+    var constructor = function(initialSearchTxt, isReSearch, searchReverse) {
         if (isReSearch) {
             // Regex search:
             reSearch = true;
         }
-        if (reverse) {
+        if (searchReverse) {
             _reverse = true;
+        } else {
+            _reverse = false;
         }
         if (typeof(initialSearchTxt) === 'string') {
             setSearchTerm(initialSearchTxt);
@@ -1435,6 +1453,9 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
             regexSearch : regexSearch, // getter
             reverse : reverse, // getter
             setReverse : setReverse, // setter
+            //**********
+            absChCount : absChCount,
+            //**********            
             playSearch : playSearch
         })
     }
@@ -1534,6 +1555,24 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
          */
         for (let cell of cells) {
             clearSelection(cell.code_mirror);
+        }
+    }
+
+    var absChCount = function(txt, position) {
+        var chCount = 0;
+        if (position.line <= 0) {
+            return Math.min(position.ch, txt.length-1);
+        }
+        for (let line=0; line<=position.line; line++) {
+            let lineChCount = txt.slice(chCount).search('\n');
+            if (lineChCount === -1) {
+                return Math.min(chCount + position.ch, txt.length-1);
+            }
+            // The +1: the \n of this line:
+            chCount += lineChCount + 1;
+            if (chCount > txt.length-1) {
+                return txt.length;
+            }
         }
     }
 
@@ -1775,9 +1814,16 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
                     } else {
                         // For foward search we set the search cursor
                         // beyond the found part of the str so it won't
-                        // be found again:
-                        curPlace().setSearchStart(curPlace().searchStart() +
-                                                  searchTerm().length);
+                        // be found again, unless this is the first search
+                        // in this cell area:
+                        if (curPlace().firstSrchInArea()) {
+                            curPlace().setSearchStart(0);
+                            curPlace().setFirstSrchInArea(false);
+                        } else {
+                            curPlace().setSearchStart(curPlace().searchStart() +
+                                                      searchTerm().length);
+
+                        }
                     }
                 }
            
@@ -1785,16 +1831,25 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
                 if (_reverse) {
                     res = regexLastExec(txt, re, curPlace().searchStart() + searchTerm().length);
                 } else {
-                    txtToSearch = txt.slice(curPlace().searchStart());
+                    // Search only from the current match position onwards:
+                    let sliceToSearch = txt.slice(curPlace().searchStart());
+                    txtToSearch = sliceToSearch;
                     res = re.exec(txtToSearch);
+                    if (res !== null) {
+                        // Correct the index of the match start to
+                        // be relative to the start of the area:
+                        res.index += txt.length - sliceToSearch.length;
+                    }
                 }
 
                 if (res === null) {
                     if (_reverse) {
-                        //******curPlace().setSearchStart(txt.length-1);
+                        curPlace().setSearchStart(txt.length-1);
                     } else {
                         curPlace().setSearchStart(0);
                     }
+                    curPlace().setFirstSrchInArea(true);
+                    clearSelection(cm);
                     continue; // next (input/output) area or cell
                 }
 
@@ -1804,6 +1859,8 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
                     // Ensure user sees the output area--unfold it:
                     cell.expand_output();
                 }
+
+                curPlace().setFirstSrchInArea(false);                
 
                 // Get match index in terms of cell line/ch, given
                 // the match index within the full cell content:
@@ -1837,9 +1894,9 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
                 } else {
                     clearDivSelection();
                     setDivSelectionRange(cell.output_area.selector[0],
-                                         curPlace().selection().anchor.ch,
-                                         curPlace().selection().head.ch
-                                        )
+                                         startOfMatch,
+                                         startOfMatch + res[0].length
+                                        );
                 }
                 Jupyter.notebook.scroll_manager.scroll_to(cell.element);
                 return curPlace();
@@ -1959,6 +2016,14 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
            
            Jupyter: for the main (input) cell area: cell.input[0]
                     for output area: cell.output_area.selector[0]
+
+           :param cellDiv: HTML div element in which selection is
+              to be made.
+           :type cellDiv: object
+           :param start: start location relative to start of div.
+           :type start: int
+           :param end: end location relative to start of div.
+           :type end: int
         */
 
         var txtNodes = getTextNodesIn(cellDiv);
@@ -2083,5 +2148,5 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
         return newReRes;
     }
     
-    return constructor(initialSearchTxt, isReSearch, reverse);
+    return constructor(initialSearchTxt, isReSearch, searchReverse);
 }
