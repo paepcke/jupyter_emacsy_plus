@@ -1736,7 +1736,7 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
                         // call to regexLastExec() to chop off
                         // the string to search at the point where
                         // the current match starts:
-                        reverseRegexSearchChop = txt.length - curPlace().searchStart();
+                        reverseRegexSearchChop = curPlace().searchStart();
                     } else {
                         // For foward search we set the search cursor
                         // beyond the found part of the str so it won't
@@ -1753,9 +1753,6 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
                     } else {
                         res = regexLastExec(txt, re, reverseRegexSearchChop);
                     }
-                    // In case we'll be asked to do a repeat-reverse search,
-                    // remember the search cursor:
-                    curPlace().setSearchStart(res.index);
                 } else {
                     txtToSearch = txt.slice(curPlace().searchStart());
                     res = re.exec(txtToSearch);
@@ -1773,7 +1770,7 @@ ISearcher = function(initialSearchTxt, isReSearch, reverse) {
                 // Got a match:
 
                 if (area2Search === 'output') {
-                    // Ensure user sees the output area:
+                    // Ensure user sees the output area--unfold it:
                     cell.expand_output();
                 }
 
