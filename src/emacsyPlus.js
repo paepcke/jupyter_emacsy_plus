@@ -1,4 +1,5 @@
 /* TODO:
+- When jumping to 1st/last cell: put those into edit mode           
 - In iSearch: scroll to make hit visible
 - In iSearch: maybe make selection pop more
 - Reverse search
@@ -151,6 +152,7 @@ function EmacsyPlus() {
         km.registerCommand('goNotebookEndCmd', goNotebookEndCmd, true);
         km.registerCommand('openLineCmd', openLineCmd, true);
         km.registerCommand('isearchForwardCmd', isearchForwardCmd, true);
+        km.registerCommand('isearchBackwardCmd', isearchBackwardCmd, true);
         km.registerCommand('reSearchForwardCmd', reSearchForwardCmd, true);
         km.registerCommand('goNxtCellCmd', goNxtCellCmd, true);
         km.registerCommand('goPrvCellCmd', goPrvCellCmd, true);
@@ -294,7 +296,7 @@ function EmacsyPlus() {
 
         /* Searching */
         emacsyPlusMap['Ctrl-S']            = "isearchForwardCmd";
-        emacsyPlusMap['Ctrl-R']            = "findPrev";
+        emacsyPlusMap['Ctrl-R']            = "isearchBackwardCmd";
         emacsyPlusMap['Shift-Ctrl-S']      = "reSearchForwardCmd";
 
         //*******************
@@ -743,14 +745,22 @@ function EmacsyPlus() {
         // array.slice(-1)[0] returns last element:
         getCm(Jupyter.notebook.get_cells().slice(-1)[0]).focus();
     }
-    
+
     var isearchForwardCmd = function(cm) {
+        isearchCmd(cm, false); // reverse === false
+    }
+    
+    var isearchBackwardCmd = function(cm) {
+        isearchCmd(cm, true); // reverse === true
+    }
+
+    var isearchCmd = function(cm, reverse) {
         prepSearch(cm);
         // This ISearcher instance will be search from
         // the current position. The keydown interrupt
         // service routing iSearchHandler will add or
         // remove letters.
-        iSearcher  = ISearcher();
+        iSearcher  = ISearcher('', false, reverse); // false: not regex search
         // Ensure the persistent search term from last
         // search is cleared out:
         iSearcher.emptySearchTerm();
@@ -766,7 +776,8 @@ function EmacsyPlus() {
         // the current position. The keydown interrupt
         // service routing iSearchHandler will add or
         // remove letters.
-        iSearcher  = ISearcher('', true); // true: be regex search
+        iSearcher  = ISearcher('', true, false); // true: be regex search,
+                                                 // false: not reverse
         // Ensure the persistent search term from last
         // search is cleared out:
         iSearcher.emptySearchTerm();
@@ -1339,7 +1350,7 @@ Place = function(initObj) {
 
     /* ----------------------------  Class ISearcher  ---------- */
 
-ISearcher = function(initialSearchTxt, isReSearch) {
+ISearcher = function(initialSearchTxt, isReSearch, reverse) {
 
     /* Handles incremental and regex searches across entire
        notebook. Scrolls to hits.
@@ -1347,7 +1358,7 @@ ISearcher = function(initialSearchTxt, isReSearch) {
        Implementation note: all functions and instance vars are
           private. Vars preceeded by underscores are available outside
           via setters/getters. See return value of constructor.
-*/
+    */
 
     // All the areas within a cell to search through:
     var searchAreas = ['input', 'output'];
@@ -1360,6 +1371,7 @@ ISearcher = function(initialSearchTxt, isReSearch) {
 
     var reSafeTxt = '';
     var reSearch = false;
+    var reverse  = reverse;
 
     var _caseSensitivity = false;
     var cells = Jupyter.notebook.get_cells();
@@ -1377,9 +1389,12 @@ ISearcher = function(initialSearchTxt, isReSearch) {
     // to initial cell/cursor
     var _curPlace = Place();
 
-    var constructor = function(initialSearchTxt, isReSearch) {
+    var constructor = function(initialSearchTxt, isReSearch, reverse) {
         if (isReSearch) {
             reSearch = true;
+        }
+        if (reverse) {
+            reverse = true;
         }
         if (typeof(initialSearchTxt) === 'string') {
             setSearchTerm(initialSearchTxt);
@@ -1611,9 +1626,24 @@ ISearcher = function(initialSearchTxt, isReSearch) {
            successful, else returns null. If repeatSearch
            is true, skips past the current search
            result to find the next result for the same
-           search str.
+           search str. 
+
+           Instance variable 'reverse' being true indicates backward
+           search. It proceeds backward within the current cell area,
+           then entering the previous cell area, then entering the
+           last area of the previous cell, etc.
+
+           :param repeatSearch: if true, skip past current search
+              result, and find next occurrence. Default: false.
+           :type repeatSearch: bool
+           :param reverse: if true, search backward. Default: false
+           :type reverse: bool
         */
         
+        if (typeof(repeatSearch) === 'undefined') {
+            repeatSearch = false;
+        }
+
         // Get where we are (recall: pop of empty stack returns
         // start of notebook):
         setCurPlace(popPlace());
@@ -1621,7 +1651,18 @@ ISearcher = function(initialSearchTxt, isReSearch) {
         // the place stack.
         pushPlace(curPlace());
 
-        for (let i=curPlace().cellIndx(); i<cells.length; i++) {
+        // Each loop-around looks at all areas of one cell.
+        // The loop statement is funky to accommodate looping
+        // either forward or backward, depending on whether
+        // 'reverse' is true or not:
+        for (let i=curPlace().cellIndx(); 
+             function() {
+                 return reverse ? i>=0 : i<cells.length;
+             }();
+             function() {
+                 return reverse ? i-- : i++;
+             }()) {
+
             curPlace().setCellIndx(i);
             var cell = cells[i];
             var cm  = cell.code_mirror;
@@ -1640,9 +1681,18 @@ ISearcher = function(initialSearchTxt, isReSearch) {
             var initialAreaIndx = searchAreas.findIndex(function(workArea)
                                                     {return workArea === curSearchArea}
                                                     );
+            // Same fancy footwork as in outer loop.
+            // Plus: the OR clause functions as a
+            // 'finally' facility. The prepForNextCell() 
+            // is guaranteed to return false:
             for (let areaIndx=initialAreaIndx;
-                 areaIndx<searchAreas.length || prepForNextCell(curPlace);
-                 areaIndx++) {
+                 function() {
+                     return reverse ? areaIndx>=0 : areaIndx<searchAreas.length;
+                 }() || prepForNextCell(curPlace);
+                 function() {
+                     return reverse ? areaIndx-- : areaIndx++;
+                 }()) {
+
 
                 // 'input', 'output', ...
                 var area2Search = searchAreas[areaIndx];
@@ -1670,22 +1720,53 @@ ISearcher = function(initialSearchTxt, isReSearch) {
                 }
 
                 var txtToSearch = null;
+                var reverseRegexSearchChop = undefined;
 
                 // Looking for next occurrence of already
                 // found search term?: if so, and we found one,
                 // point the search cursor past that one
-                // we found so we don't re-find it:
+                // we found so we don't re-find it. Note:
+                // for reverse-search we need not worry, b/c the
+                // search cursor will already be in front of the
+                // search term:
                 if (repeatSearch &&
                     txt.slice(curPlace().searchStart()).startsWith(searchTerm())){
-                    curPlace().setSearchStart(curPlace().searchStart() +
-                                              searchTerm().length)
+                    if (reverse) {
+                        // For reverse search, tell the upcoming
+                        // call to regexLastExec() to chop off
+                        // the string to search at the point where
+                        // the current match starts:
+                        reverseRegexSearchChop = txt.length - curPlace().searchStart();
+                    } else {
+                        // For foward search we set the search cursor
+                        // beyond the found part of the str so it won't
+                        // be found again:
+                        curPlace().setSearchStart(curPlace().searchStart() +
+                                                  searchTerm().length)
+                    }
+                }
+           
+                var res;
+                if (reverse) {
+                    if (typeof(reverseRegexSearchChop) === 'undefined') {
+                        res = regexLastExec(txt, re);
+                    } else {
+                        res = regexLastExec(txt, re, reverseRegexSearchChop);
+                    }
+                    // In case we'll be asked to do a repeat-reverse search,
+                    // remember the search cursor:
+                    curPlace().setSearchStart(res.index);
+                } else {
+                    txtToSearch = txt.slice(curPlace().searchStart());
+                    res = re.exec(txtToSearch);
                 }
 
-                txtToSearch = txt.slice(curPlace().searchStart());
-                var res = re.exec(txtToSearch);
-
                 if (res === null) {
-                    curPlace().setSearchStart(0);
+                    if (reverse) {
+                        curPlace().setSearchStart(txt.length-1);
+                    } else {
+                        curPlace().setSearchStart(0);
+                    }
                     continue; // next (input/output) area or cell
                 }
 
@@ -1719,7 +1800,7 @@ ISearcher = function(initialSearchTxt, isReSearch) {
                 pushPlace(curPlace());
                 
                 // Selection techniques are different for input vs. output
-                // area. Could maybe unified. Input areas use CodeMirror
+                // area. Could maybe be unified. Input areas use CodeMirror
                 // selections. Output areas use browser selections:
                 if (area2Search === 'input') {
                     clearSelection(cm);
@@ -1783,7 +1864,11 @@ ISearcher = function(initialSearchTxt, isReSearch) {
           it is used goes infinite.
          */
         curPlace().nullTheSelection();
-        curPlace().setSearchStart(0);
+        if (reverse) {
+            curPlace().setSearchStart(searchTerm().length-1);
+        } else {
+            curPlace().setSearchStart(0);
+        }
         // Moving on to a new cell; reset current
         // cell area to the first in the sequence
         // of cell areas:
@@ -1805,6 +1890,10 @@ ISearcher = function(initialSearchTxt, isReSearch) {
         var curTerm = searchTerm();
         curTerm += chr;
         setSearchTerm(curTerm);
+        if (reverse) {
+            //****On first char-entry in search: searchStart === 0, not 1!
+            curPlace().setSearchStart(curPlace().searchStart() + 1);
+        }
         if (! reSearch) {
             // Update the isearch-needed regex escapes
             reSafeTxt = escReSpecials(searchTerm())
@@ -1814,7 +1903,6 @@ ISearcher = function(initialSearchTxt, isReSearch) {
             return true;
         }
         goPrevMatch();
-        //*****return this.next();
         return next();
     }
         
@@ -1886,25 +1974,74 @@ ISearcher = function(initialSearchTxt, isReSearch) {
         return textNodes;
     }
 
-    return constructor(initialSearchTxt, isReSearch);
-}
+    var regexLastExec = function(str, re, startpos) {
+        /*
+          Behaves like regex.exec(), but searches for
+          the last successful re.exec() in the given string.
+          Startpos can be used to remove the *tail* of str.
+          By default, startpos is one more than the length of 
+          str, so the entire string will be back-searched.
+          Example: 
 
-//*********************
-String.prototype.regexLastIndexOf = function(re, startpos) {
-    re = (re.global) ? re : new Rep(re.source, "g" + (re.ignoreCase ? "i" : "") + (re.multiLine ? "m" : ""));
-    if(typeof (startpos) == "undefined") {
-        startpos = this.length;
-    } else if(startpos < 0) {
-        startpos = 0;
+             - re  = /fo/i
+             - str = 'Dog eats dog'
+             - startpos = 0
+
+          The index attribute of the returned value will be 9.
+          But if startpos were, say 4, then the index attribute
+          would be 0. 
+
+          NOTE: if you pass in 0 for startpos, nothing will be searched.
+
+          Return value is the same as the re.exec() call. That is,
+          an array whose first element is the full string of matched 
+          characters. Following elements, if any, are collected groups.
+          The return's 'index' property holds the index at which the 
+          match occurred in str. For other properties of the return, see
+          RegExp.exec(). If no match was found, returns null.
+
+          The passed-in regexp's lastIndex property will be updated.
+             
+         */
+        
+        // Build local copy of re. Since we update the passed-in
+        // re's lastIndex anyway, we don't really have to do this:
+        re = (re.global) ? re : new RegExp(re.source,
+                                           "g" +
+                                           (re.ignoreCase ? "i" : "") +
+                                           (re.multiLine ? "m" : ""));
+        if(typeof (startpos) == "undefined") {
+            startpos = str.length;
+        } else if(startpos < 0) {
+            startpos = 0;
+        }
+        var stringToWorkWith = str.substring(0, startpos + 1);
+        var lastIndexOf = -1;
+        var prevResult = null;
+        var result;
+        while((result = re.exec(stringToWorkWith)) != null) {
+            lastIndexOf  = result.index;
+            re.lastIndex = lastIndexOf + 1;
+            prevResult   = copyRegexRes(result);
+        }
+        // Update the passed-in re's lastIndex property:
+        re.lastIndex = prevResult.index;
+        
+        // The most recent search returned null, which
+        // is how we exited the loop above. Return the
+        // previous result
+        return prevResult;
     }
-    var stringToWorkWith = this.substring(0, startpos + 1);
-    var lastIndexOf = -1;
-    var nextStop = 0;
-    var result;
-    while((result = re.exec(stringToWorkWith)) != null) {
-        lastIndexOf = result.index;
-        re.lastIndex = ++nextStop;
+
+    var copyRegexRes = function(reRes) {
+        newReRes = [];
+        for (let reResEl of reRes) {
+            newReRes.push(reResEl);
+        }
+        newReRes.index = reRes.index;
+        newReRes.input = reRes.input;
+        return newReRes;
     }
-    return lastIndexOf;
+    
+    return constructor(initialSearchTxt, isReSearch, reverse);
 }
-//*********************
