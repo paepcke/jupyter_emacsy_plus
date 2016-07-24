@@ -1254,6 +1254,9 @@ Place = function(initObj) {
                     case 'firstSrchInArea':
                         thisPlace.firstSrchInArea = value();
                         break;
+                    case 'isISearchStart':
+                        thisPlace.isISearchStart = value();
+                        break;
                     case 'searchStart':
                         thisPlace.searchStart = value();
                         break;
@@ -1282,7 +1285,10 @@ Place = function(initObj) {
             setCellIndx : setCellIndx, // setter            
             inCellArea : inCellArea, // getter
             setInCellArea : setInCellArea, // setter
+            isISearchStart : isISearchStart, // getter
+            setIsISearchStart : setIsISearchStart, // setter
             firstSrchInArea : firstSrchInArea, // getter
+            isISearchStart : isISearchStart, // getter            
             setFirstSrchInArea : setFirstSrchInArea, // setter
             searchStart : searchStart, // getter
             setSearchStart : setSearchStart, // setter            
@@ -1324,6 +1330,15 @@ Place = function(initObj) {
         return isFirst;
     }
 
+    var isISearchStart = function() {
+        return thisPlace.isISearchStart;
+    }
+
+    var setIsISearchStart = function(isFirst) {
+        thisPlace.isISearchStart = isFirst;
+        return isFirst;
+    }
+
     var searchStart = function() {
         return thisPlace.searchStart
     }
@@ -1358,6 +1373,7 @@ Place = function(initObj) {
         
         return {cellIndx : Jupyter.notebook.find_cell_index(initialCell), 
                 inCellArea : 'input',
+                isISearchStart : true,
                 firstSrchInArea : true,
                 searchStart : undefined,
                 selection : {anchor : {line : initialCursor.line, ch : initialCursor.ch},
@@ -1373,6 +1389,7 @@ Place = function(initObj) {
         thisPlace.cellIndx    = other.cellIndx();
         thisPlace.inCellArea    = other.inCellArea();
         thisPlace.firstSrchInArea = other.firstSrchInArea();
+        thisPlace.isISearchStart = other.isISearchStart();
         thisPlace.searchStart = other.searchStart();
         copySel(other.selection().anchor, thisPlace.selection().anchor);
         copySel(other.selection().head, thisPlace.selection().head);
@@ -1812,13 +1829,20 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
                     txt = getTextFromCell(cell, area2Search);
                     // If this is the first search in this
                     // area, init the search start cursor.
-                    // NOTE: when an new cell is entered in
+                    // NOTE: when a new cell is entered in
                     // the outer loop, then this inner loop
                     // will inititialize to the area in which
-                   // a previous search had a hit. So the
-                    // area may in fact have seen a search before!
+                    // a previous search had a hit. So the
+                    // area may in fact have seen a search before,
+                    // even though we are in this loop.
 
-                    if (curPlace().firstSrchInArea()) {
+                    // If this is the very start of an iSearch,
+                    // then the start of the search will have
+                    // been initialized already: to the current
+                    // cursor position. In that case, leave
+                    // searchStart alone:
+                    if (curPlace().firstSrchInArea() &&
+                        ! curPlace().isISearchStart()) {
                         
                         // For reverse search we need to set
                         // the search cursor to the end of this
@@ -1835,6 +1859,9 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
                     continue;
                 }
 
+                // No longer in very first search:
+                curPlace().setIsISearchStart(false);
+                
                 var re  = null;
                 // Note: we use String.search(re)
                 // for searching whether or not the
