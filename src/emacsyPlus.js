@@ -127,6 +127,13 @@ function EmacsyPlus() {
             }
         }        
 
+        // Hack: I couldn't figure out how to add a
+        // css sheet whose class names were found by
+        //   CodeMirror.doc.setMarker(start,end,{className : <className>}).
+        // So the following (internally) looks for the already laoded codemirror.css
+        // sheet and adds a highlighting rule to it:
+        addSearchHighlightRule();
+
         km.registerCommand('ctrlXCmd', ctrlXCmd, true);  // true: ok to overwrite function
         km.registerCommand('killCmd', killCmd, true);
         km.registerCommand('killRegionCmd', killRegionCmd, true);
@@ -192,7 +199,7 @@ function EmacsyPlus() {
         
         // Instances of this EmacsyPlus class have only public methods:
         EmacsyPlus.instance =
-            {help : helpCmd
+            {help : helpCmd,
             }
 
         //********
@@ -423,6 +430,35 @@ function EmacsyPlus() {
             background-color : LightBlue;
         }</style><body><h1>EmacsyPlus Bindings</h2>${tableHtml}</body></html>`;
         return htmlPage;
+    }
+
+    var addSearchHighlightRule = function() {
+        /*
+        // Hack: I couldn't figure out how to add a
+        // css sheet whose class names were found by
+        //
+        //   CodeMirror.doc.setMarker(start,end,{className : <className>}).
+        //
+        // So the following (internally) looks for the already laoded codemirror.css
+        // sheet and adds a highlighting rule to it.
+        // Terrible hack.
+
+        */
+        var cssSheets = document.styleSheets;
+        var cmSheet = null;
+        for (let sheet of cssSheets) {
+            if (sheet.href.search(/codemirror.css/) > -1) {
+                cmSheet = sheet;
+                break;
+            }
+        }
+        if (cmSheet === null) {
+            return false;
+        } else {
+            // Yellow:
+            cmSheet.insertRule(".emacsyPlusSearchHighlight { background-color : #F9F221; }", 1)
+        }
+        return true;
     }
 
     /*------------------------------- Commands for CodeMirror  -------------- */
@@ -967,6 +1003,7 @@ function EmacsyPlus() {
         }
         
         removeMiniBuf();
+        iSearcher.clearHighlights();
 
         if (typeof(restoreCursor) === 'undefined') {
             restoreCursor = true;
@@ -1446,6 +1483,8 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
     // minibuffer than entered up to a given point:
     var placeStack  = [];
 
+    var highlightMarkers = [];
+
     // Remember where in notebook we started search
     var _initialPlace = Place();
 
@@ -1490,10 +1529,7 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
             regexSearch : regexSearch, // getter
             reverse : reverse, // getter
             setReverse : setReverse, // setter
-            //**********
-            absChCount : absChCount,
-            placeStack : placeStack,
-            //**********            
+            clearHighlights : clearHighlights, // method
             playSearch : playSearch
         })
     }
@@ -1978,8 +2014,12 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
                 // selections. Output areas use browser selections:
                 if (area2Search === 'input') {
                     clearSelection(cm);
+                    clearHighlights();
                     cm.doc.setSelection(curPlace().selection().anchor,
                                         curPlace().selection().head);
+                    setHighlight(cell,
+                                 curPlace().selection().anchor,
+                                 curPlace().selection().head);
                 } else {
                     clearDivSelection();
                     setDivSelectionRange(cell.output_area.selector[0],
@@ -2147,7 +2187,21 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
     var clearDivSelection = function() {
         window.getSelection().removeAllRanges();
     }
+
+    var setHighlight = function(cell, anchor, head) {
+        var cm = cell.code_mirror;
+        highlightMarkers.push(cm.doc.markText(anchor,
+                                              head,
+                                              {className : 'emacsyPlusSearchHighlight'}));
+    }
     
+    var clearHighlights = function() {
+        for (let marker of highlightMarkers) {
+            marker.clear();
+        }
+        highlightMarkers = [];
+    }
+
     var getTextNodesIn = function(node) {
         /*
           Given a div element, return all text nodes inside it.
