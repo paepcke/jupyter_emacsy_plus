@@ -805,7 +805,7 @@ function EmacsyPlus() {
             // Ensure that the search starts at
             // current cursor:
             var curCur = cm.doc.getCursor();
-            iSearcher.setNextSearchStart(curCur);
+            iSearcher.setInitialSearchStart(curCur);
         }
     }
 
@@ -1445,6 +1445,8 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
         } else {
             _reverse = false;
         }
+        // The following if is not tested, b/c
+        // never used so far:
         if (typeof(initialSearchTxt) === 'string') {
             setSearchTerm(initialSearchTxt);
             if (reSearch) {
@@ -1460,7 +1462,7 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
             addChar : addChar, // method
             chopChar : chopChar, // method
             searchTerm : searchTerm, // getter
-            setNextSearchStart : setNextSearchStart, // setter
+            setInitialSearchStart : setInitialSearchStart, // setter
             emptySearchTerm : emptySearchTerm, // method
             caseSensitivity : caseSensitivity, // getter
             setCaseSensitivity : setCaseSensitivity, // setter
@@ -1472,6 +1474,7 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
             setReverse : setReverse, // setter
             //**********
             absChCount : absChCount,
+            placeStack : placeStack,
             //**********            
             playSearch : playSearch
         })
@@ -1492,7 +1495,7 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
         return _initialPlace;
     }
 
-    var setNextSearchStart = function(curPos) {
+    var setInitialSearchStart = function(curPos) {
         /*
           Given a cursor position, ensure that 
           next search action starts at that position.
@@ -1507,9 +1510,15 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
         var txtCurCell = curCell.get_text();
         var cm = curCell.code_mirror;
         var curCur = cm.doc.getCursor();
-        setCurPlace(popPlace());
+        popPlace();
         curPlace().setSearchStart(absChCount(txtCurCell, curCur));
+        // Hack! Push two copies, so that when the
+        // very first char is typed in the minibuf,
+        // the addChar() method's call to goPrevMatch()
+        // will leave this initial search frame on the
+        // stack:
         pushPlace(curPlace());
+        pushPlace(curPlace());        
     }
 
     var setCurPlace = function(newPlace) {
@@ -1718,7 +1727,7 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
             popPlace();
         }
         // Last pop is the one caller wants:
-        setCurPlace(popPlace());
+        popPlace();
         return curPlace();
     }
     
@@ -1745,7 +1754,7 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
 
         // Get where we are (recall: pop of empty stack returns
         // start of notebook):
-        setCurPlace(popPlace());
+        popPlace();
         // Save current selection place back onto
         // the place stack.
         pushPlace(curPlace());
@@ -2048,6 +2057,7 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
             return true;
         }
         goPrevMatch();
+        // Process new content of minibuf:
         return next();
     }
         
