@@ -1797,10 +1797,30 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
                 var area2Search = searchAreas[areaIndx];
                 curPlace().setInCellArea(area2Search);
 
-                // Grab text out of the cell, depending
-                // on which of the areas we are searching:
+                // Grab text out of the cell, from the area
+                // that are currently searching:
                 try {
                     txt = getTextFromCell(cell, area2Search);
+                    // If this is the first search in this
+                    // area, init the search start cursor.
+                    // NOTE: when an new cell is entered in
+                    // the outer loop, then this inner loop
+                    // will inititialize to the area in which
+                   // a previous search had a hit. So the
+                    // area may in fact have seen a search before!
+
+                    if (curPlace().firstSrchInArea()) {
+                        
+                        // For reverse search we need to set
+                        // the search cursor to the end of this
+                        // new area's text, for forward, start at
+                        // loc zero:
+                        if (_reverse) {
+                            curPlace().setSearchStart(txt.length-1);
+                        } else {
+                            curPlace().setSearchStart(0);
+                        }
+                    }
                 } catch(err) {
                     // Next cell area to look into:
                     continue;
@@ -1880,11 +1900,6 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
                 }
 
                 if (res === null) {
-                    if (_reverse) {
-                        curPlace().setSearchStart(txt.length-1);
-                    } else {
-                        curPlace().setSearchStart(0);
-                    }
                     curPlace().setFirstSrchInArea(true);
                     clearSelection(cm);
                     continue; // next (input/output) area or cell
