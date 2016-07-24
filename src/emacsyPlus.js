@@ -1,5 +1,4 @@
 /* TODO:
-- When jumping to 1st/last cell: put those into edit mode           
 - In iSearch: scroll to make hit visible
 - In iSearch: maybe make selection pop more
 - Reverse search
@@ -896,6 +895,8 @@ function EmacsyPlus() {
                 var res = iSearcher.searchAgain();
                 if (res === null) {
                     mBuf.style.backgroundColor = 'red';                
+                } else {
+                    mBuf.style.backgroundColor = normalColor;
                 }
             }
             evt.preventDefault();
