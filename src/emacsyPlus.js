@@ -1740,15 +1740,9 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
             // That function MUST return false; else infinite
             // loop:
 
-            if (_reverse) {
-                // New cells are first looked at in their
-                // last area (e.g. output):
-                searchAreas.length - 1;
-            } else {
             var initialAreaIndx = searchAreas.findIndex(function(workArea)
-                                                    {return workArea === curSearchArea}
+                                                        {return workArea === curSearchArea}
                                                        );
-            }
             // Same fancy footwork as in outer loop.
             // Plus: the OR clause functions as a
             // 'finally' facility. The prepForNextCell() 
