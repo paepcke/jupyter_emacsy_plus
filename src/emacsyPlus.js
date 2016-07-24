@@ -764,7 +764,8 @@ function EmacsyPlus() {
         // Ensure the persistent search term from last
         // search is cleared out:
         iSearcher.emptySearchTerm();
-        
+        // Ensure that search starts at cursor:
+        primeSearchStart(cm, iSearcher);        
         // Present the minibuffer, get focus to it,
         // and behave isearchy via the iSearchHandler:
         var mBuf = monitorMiniBuf(iSearchHandler)
@@ -781,7 +782,8 @@ function EmacsyPlus() {
         // Ensure the persistent search term from last
         // search is cleared out:
         iSearcher.emptySearchTerm();
-
+        // Ensure that search starts at cursor:
+        primeSearchStart(cm, iSearcher);
         // Present the minibuffer, get focus to it,
         // and behave isearchy via the iSearchHandler:
         var mBuf = monitorMiniBuf(iSearchHandler)
@@ -789,8 +791,22 @@ function EmacsyPlus() {
 
     var prepSearch = function(cm) {
         var cur = cm.doc.getCursor();
-        savedPlace = {cm : cm, line : cur.line, ch : cur.ch};
-        
+        savedPlace = {cm : cm, line : cur.line, ch : cur.ch};      
+    }
+
+    var primeSearchStart = function(cm, iSearcher) {
+        /*
+          Makes the very first char be found where
+          the cursor is, rather than at start of
+          current input cell:
+         */
+
+        if (iSearcher.curPlace().inCellArea() === 'input') {
+            // Ensure that the search starts at
+            // current cursor:
+            var curCur = cm.doc.getCursor();
+            iSearcher.setNextSearchStart(curCur);
+        }
     }
 
     /* ----------- Incremental Search -------------*/
@@ -1444,6 +1460,7 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
             addChar : addChar, // method
             chopChar : chopChar, // method
             searchTerm : searchTerm, // getter
+            setNextSearchStart : setNextSearchStart, // setter
             emptySearchTerm : emptySearchTerm, // method
             caseSensitivity : caseSensitivity, // getter
             setCaseSensitivity : setCaseSensitivity, // setter
@@ -1473,6 +1490,26 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
 
     var initialPlace = function() {
         return _initialPlace;
+    }
+
+    var setNextSearchStart = function(curPos) {
+        /*
+          Given a cursor position, ensure that 
+          next search action starts at that position.
+
+          :param curPos: CodeMirror-style position: {line: int, ch: int}
+          :type curPos: object
+         */
+
+        // Get where we are (recall: pop of empty stack returns
+        // start of notebook):
+        var curCell = Jupyter.notebook.get_selected_cell();
+        var txtCurCell = curCell.get_text();
+        var cm = curCell.code_mirror;
+        var curCur = cm.doc.getCursor();
+        setCurPlace(popPlace());
+        curPlace().setSearchStart(absChCount(txtCurCell, curCur));
+        pushPlace(curPlace());
     }
 
     var setCurPlace = function(newPlace) {
@@ -1956,8 +1993,16 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
         }
         // Moving on to a new cell; reset current
         // cell area to the first in the sequence
-        // of cell areas:
-        curPlace().setInCellArea(searchAreas[0]);
+        // of cell areas, or the last, depending
+        // on search direction:
+        if (_reverse) {
+            curPlace().setInCellArea(searchAreas[searchAreas.length-1]);
+        } else {
+            curPlace().setInCellArea(searchAreas[0]);
+        }
+
+
+
         return false;
     }
 
