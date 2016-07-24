@@ -4,7 +4,7 @@ An Emacs mode for Jupyter that is closer to Gnu Emacs than the built-in *emacsy*
 
 - Named content registers
 - Named location registers
-- Incremental and regex search (forward only right now)
+- Incremental and regex search
 - Single- and multi-line kills (cnt-k), which can then be yanked (cnt-y). 
 - Cnt-x [?]> commands are supported via a secondary keymap dispatch.
 - Key binding changes accomplished by changing a table, similar to what would happen in a .emacs file.

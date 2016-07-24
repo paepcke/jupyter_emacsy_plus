@@ -1,11 +1,9 @@
 /* TODO:
 - In iSearch: scroll to make hit visible
-- In iSearch: maybe make selection pop more
-- Reverse search
 - Cnt-L to center
 - Doc: Emacs keys only work in edit mode.
 - Doc: Move some to ReadTheDocs
-- Connect c-x c-s with my Jupyter snapshot setup.
+- Connect c-x c-s with Jupyter greater-one-snapshot solution.
 */
 
 /*
@@ -895,7 +893,6 @@ function EmacsyPlus() {
 
         var mBuf = this
         var bufVal = mBuf.value;
-        iSearcher.setCaseSensitivity(false);
 
         // If minibuffer empty, take opportunity
         // to ensure that isearcher's current search
@@ -952,6 +949,7 @@ function EmacsyPlus() {
         // as words, e.g. 'Backspace', which would
         // turn the search case sensistive. So: only
         // check with single-length new keystrokes:
+        iSearcher.setCaseSensitivity(false);
         var newKey = evt.key;
         if (newKey.length > 1) {
             newKey = '';
@@ -975,13 +973,6 @@ function EmacsyPlus() {
                 searchRes = iSearcher.addChar(evt.key);
             }
         }
-
-        //*******
-        // if (evt.search == 'nxtBackward') {
-        //     searchRes = self.find(txt, caseSensitivity, BACK_SEARCH);
-        // } else {
-        //     searchRes = self.find(txt, caseSensitivity, FORW_SEARCH);
-        // }
 
         if (searchRes !== null || iSearcher.searchTerm().length === 0) {
             mBuf.style.backgroundColor = normalColor;
