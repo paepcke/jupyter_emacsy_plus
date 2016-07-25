@@ -96,6 +96,7 @@ function EmacsyPlus() {
     var mark = null;
     var os = km.getOsPlatform();
     var ctrlInProgress = false;
+    var ctrlShiftInProgress = false;
 
     var mBufName   = 'minibuffer';
     var minibufMonitored = false;
@@ -789,7 +790,7 @@ function EmacsyPlus() {
 
     var isearchCmd = function(cm, reverse) {
         prepSearch(cm);
-        // This ISearcher instance will be search from
+        // This ISearcher instance will search from
         // the current position. The keydown interrupt
         // service routing iSearchHandler will add or
         // remove letters.
@@ -806,7 +807,7 @@ function EmacsyPlus() {
 
     var reSearchForwardCmd = function(cm) {
         prepSearch(cm);
-        // This ISearcher instance will be search from
+        // This ISearcher instance will search from
         // the current position. The keydown interrupt
         // service routing iSearchHandler will add or
         // remove letters.
@@ -1003,10 +1004,20 @@ function EmacsyPlus() {
         if (restoreCursor && typeof(savedPlace) === 'object') {
             savedPlace.cm.doc.setCursor({line: savedPlace.line, ch: savedPlace.ch});
         } else {
-            var cells    = Jupyter.notebook.get_cells();
+            var cells     = Jupyter.notebook.get_cells();
             var lastPlace = iSearcher.curPlace();
-            var curCell  = cells[lastPlace.cellIndx()];
-            curCell.code_mirror.doc.setCursor(lastPlace.selection().head);
+            var curCell   = cells[lastPlace.cellIndx()];
+            var cm        = getCm(curCell);
+
+            if (lastPlace.inCellArea() === 'output') {
+                // Put cursor at end of input area
+                // of the cell to which the output area
+                // belongs. Unfortunately, this will lose
+                // the selection inside the output area:
+                cm.execCommand('goDocEnd');
+            } else {
+                curCell.code_mirror.doc.setCursor(lastPlace.selection().head);
+            }
             curCell.focus_cell();
         }
         
@@ -1247,7 +1258,6 @@ function EmacsyPlus() {
         // return (sel.anchor.line === sel.head.line &&
         //         sel.anchor.ch === sel.head.ch);
     }
-
 
     /* ----------------------------  Call Constructor and Export Public Methods ---------- */
 
