@@ -264,7 +264,8 @@ function EmacsyPlus() {
         emacsyPlusMap['Ctrl-V'] = "goPageUp";
 
         //emacsyPlusMap['Cmd-V']  = "goPageDown"; // Preserve for true sys clipboard access
-        //emacsyPlusMap['Cmd-B']  = "goWordLeft"; // Preserve for true sys clipboard access
+                                                  // same for Cmd-c (capitalize word)
+        emacsyPlusMap['Cmd-B']  = "goWordLeft"; 
 
         emacsyPlusMap['Alt-F']  = "goWordRight";
         if (os === 'Mac') {emacsyPlusMap['Cmd-F']  = "goWordRight";};
