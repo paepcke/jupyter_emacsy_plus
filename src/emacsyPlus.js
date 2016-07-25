@@ -1001,25 +1001,37 @@ function EmacsyPlus() {
 
         if (restoreCursor && typeof(savedPlace) === 'object') {
             savedPlace.cm.doc.setCursor({line: savedPlace.line, ch: savedPlace.ch});
+            curCell.focus_cell();
+            Jupyter.notebook.edit_mode();
         } else {
             var cells     = Jupyter.notebook.get_cells();
             var lastPlace = iSearcher.curPlace();
             var curCell   = cells[lastPlace.cellIndx()];
             var cm        = getCm(curCell);
+            // Selection within output area:
+            var outSel    = lastPlace.outputSelection();
 
+            // Put cell into edit mode early, b/c that
+            // kills the selection in the output area.
+            // We'll restore it right after:
+            
+            curCell.focus_cell();
+            Jupyter.notebook.edit_mode();
             if (lastPlace.inCellArea() === 'output') {
                 // Put cursor at end of input area
                 // of the cell to which the output area
                 // belongs. Unfortunately, this will lose
                 // the selection inside the output area:
                 cm.execCommand('goDocEnd');
+                iSearcher.setDivSelectionRange(curCell, outSel);
             } else {
+                // Easy: set cursor within input area.
+                // Highlight will be cleared by this, but
+                // cursor will be right after the match:
                 curCell.code_mirror.doc.setCursor(lastPlace.selection().head);
             }
-            curCell.focus_cell();
         }
         
-        Jupyter.notebook.edit_mode();
         iSearcher = null;
     }
 
@@ -1294,6 +1306,9 @@ Place = function(initObj) {
                     case 'searchStart':
                         thisPlace.searchStart = value();
                         break;
+                    case 'outputSelection':
+                        thisPlace.outputSelection = value();
+                        break;
                     case 'selection':
                         // Check for passed-in values ill-formed:
                         try {
@@ -1327,7 +1342,9 @@ Place = function(initObj) {
             searchStart : searchStart, // getter
             setSearchStart : setSearchStart, // setter            
             selection : selection, // getter
-            setSelection : setSelection, // setter 
+            setSelection : setSelection, // setter
+            outputSelection : outputSelection, // getter
+            setOutputSelection : setOutputSelection, // setter
             clone : clone, // method
             nullTheSelection : nullTheSelection // method
         }
@@ -1391,6 +1408,39 @@ Place = function(initObj) {
         return newSelection;
     }
 
+    var outputSelection = function() {
+        /* Output area selections differ from
+           regular CodeMirror selections in that
+           they happen in Jupyter output areas.
+           Those are divs, not CodeMirror instances.
+           So references into text are not of the
+           {line: n, ch:m} format, but start and end
+           indices into regular strings.
+           
+           An outputSelection has form:
+             {start : <n>, end : <m>}
+           
+        */
+        // Can be undefined if setOutputSelection() was
+        // never called:
+        return thisPlace.outputSelection;
+    }
+
+    var setOutputSelection = function(newSelection) {
+        /* 
+           See outputSelection() for details.
+        */
+        if (typeof(newSelection.start) !== 'number' ||
+            typeof(newSelection.end) !== 'number') {
+            throw "Output area selections must be objects with start/end integers.";
+        }
+        if (typeof(thisPlace.outputSelection) === 'undefined') {
+            thisPlace.outputSelection = {};
+        }
+        thisPlace.outputSelection.start   = newSelection.start;
+        thisPlace.outputSelection.end     = newSelection.end;
+        return newSelection;
+    }
 
     var clone = function() {
         return Place(this);
@@ -1410,6 +1460,7 @@ Place = function(initObj) {
                 isISearchStart : true,
                 firstSrchInArea : true,
                 searchStart : undefined,
+                outputSelection : undefined,
                 selection : {anchor : {line : initialCursor.line, ch : initialCursor.ch},
                              head   : {line : initialCursor.line, ch : initialCursor.ch}
                             }
@@ -1425,6 +1476,8 @@ Place = function(initObj) {
         thisPlace.firstSrchInArea = other.firstSrchInArea();
         thisPlace.isISearchStart = other.isISearchStart();
         thisPlace.searchStart = other.searchStart();
+        thisPlace.outputSelection.start = other.outputSelection.start;
+        thisPlace.outputSelection.end   = other.outputSelection.end;
         copySel(other.selection().anchor, thisPlace.selection().anchor);
         copySel(other.selection().head, thisPlace.selection().head);
         return dst;
@@ -1526,7 +1579,8 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
             reverse : reverse, // getter
             setReverse : setReverse, // setter
             clearHighlights : clearHighlights, // method
-            playSearch : playSearch
+            playSearch : playSearch,
+            setDivSelectionRange : setDivSelectionRange, // setter
         })
     }
     var searchTerm = function() {
@@ -2018,10 +2072,13 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
                                  curPlace().selection().head);
                 } else {
                     clearDivSelection();
-                    setDivSelectionRange(cell.output_area.selector[0],
-                                         startOfMatch,
-                                         startOfMatch + res[0].length
+                    setDivSelectionRange(cell,
+                                         {start : startOfMatch,
+                                          end   : startOfMatch + res[0].length}
                                         );
+                    curPlace().setOutputSelection({start: startOfMatch,
+                                                   end:   startOfMatch + res[0].length
+                                                  });
                 }
                 Jupyter.notebook.scroll_manager.scroll_to(cell.element);
                 return curPlace();
@@ -2144,22 +2201,25 @@ ISearcher = function(initialSearchTxt, isReSearch, searchReverse) {
         return next();
     }
 
-    var setDivSelectionRange = function(cellDiv, start, end) {
+    var setDivSelectionRange = function(cell, startEndObj) {
         /* Given a div that includes at least one text node, and a range, 
            select the first text. 
            
            Jupyter: for the main (input) cell area: cell.input[0]
                     for output area: cell.output_area.selector[0]
 
-           :param cellDiv: HTML div element in which selection is
-              to be made.
-           :type cellDiv: object
-           :param start: start location relative to start of div.
-           :type start: int
-           :param end: end location relative to start of div.
-           :type end: int
+           :param cell: cell whose HTML div is to receive the selection.
+           :type Div: object
+           :param startEndObj: object whose 'start' property contains the
+               selection start location relative to start of div.
+               Its 'end' property contains end of selection.
+           :type start: {start: number, end: number}
         */
 
+        // Get DIV from the cell's output area;
+        var start    = startEndObj.start;
+        var end      = startEndObj.end;
+        var cellDiv  = cell.output_area.selector[0];
         var txtNodes = getTextNodesIn(cellDiv);
         if (txtNodes.length === 0) {
             throw 'Given div does not contain any text nodes.'
