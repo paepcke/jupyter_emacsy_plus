@@ -15,7 +15,7 @@ An Emacs mode for Jupyter that is closer to Gnu Emacs than the built-in *emacsy*
 **Note**: Key **F1** or **Ctrl-x h** in a Jupyter cell show active bindings. It's a pop-up, so watch out for popup blocker if the help window does not appear.
 
 
-Current compatibility: Runs on Chrome/Firefox MAC OSX/Linux.
+Current compatibility: Runs on Chrome/Firefox MAC OSX. Runs on Ubuntu if some interfering Ubuntu keyboard shortcuts are disabled.
 
 ###*Installation*
 
@@ -53,7 +53,7 @@ Here are a few bindings you may not be aware of:
 
 This is all you need to know for *EmacsyPlus*. Below is information about an underlying keymapping facility on which *EmacsyPlus* is built. Only read if you want to build a different mode.
 
-Do scan the limitations at the bottom.
+Do scan the [limitations](#bugs) at the bottom.
 
 -----------
 
