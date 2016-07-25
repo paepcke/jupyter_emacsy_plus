@@ -999,25 +999,28 @@ function EmacsyPlus() {
             restoreCursor = true;
         }
 
+        var cells     = Jupyter.notebook.get_cells();
+        var lastPlace = iSearcher.curPlace();
+        var curCell   = cells[lastPlace.cellIndx()];
+
         if (restoreCursor && typeof(savedPlace) === 'object') {
             savedPlace.cm.doc.setCursor({line: savedPlace.line, ch: savedPlace.ch});
             curCell.focus_cell();
             Jupyter.notebook.edit_mode();
         } else {
-            var cells     = Jupyter.notebook.get_cells();
-            var lastPlace = iSearcher.curPlace();
-            var curCell   = cells[lastPlace.cellIndx()];
             var cm        = getCm(curCell);
             // Selection within output area:
             var outSel    = lastPlace.outputSelection();
-
-            // Put cell into edit mode early, b/c that
-            // kills the selection in the output area.
-            // We'll restore it right after:
             
-            curCell.focus_cell();
-            Jupyter.notebook.edit_mode();
             if (lastPlace.inCellArea() === 'output') {
+
+                // Put cell into edit mode early, b/c that
+                // kills the selection in the output area.
+                // We'll restore it right after:
+
+                curCell.focus_cell();
+                Jupyter.notebook.edit_mode();
+
                 // Put cursor at end of input area
                 // of the cell to which the output area
                 // belongs. Unfortunately, this will lose
@@ -1029,6 +1032,10 @@ function EmacsyPlus() {
                 // Highlight will be cleared by this, but
                 // cursor will be right after the match:
                 curCell.code_mirror.doc.setCursor(lastPlace.selection().head);
+
+                curCell.focus_cell();
+                Jupyter.notebook.edit_mode();
+                
             }
         }
         

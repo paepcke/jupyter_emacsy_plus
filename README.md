@@ -4,10 +4,13 @@ An Emacs mode for Jupyter that is closer to Gnu Emacs than the built-in *emacsy*
 
 - Named content registers
 - Named location registers
-- Incremental and regex search
-- Single- and multi-line kills (cnt-k), which can then be yanked (cnt-y). 
-- Cnt-x [?]> commands are supported via a secondary keymap dispatch.
-- Key binding changes accomplished by changing a table, similar to what would happen in a .emacs file.
+- Incremental and regex search, including output areas
+- Single- and multi-line kills (cnt-k), which can then be yanked (cnt-y)
+- Point/mark region selection
+- Cell hopping via keyboard shortcuts
+- Cnt-x [?]> commands are supported via a secondary keymap dispatch
+- Key binding changes accomplished by changing a table, similar to what would happen in a .emacs file
+- See [bugs and limitations](#bugs) for work to be done
 
 **Note**: Key **F1** or **Ctrl-x h** in a Jupyter cell show active bindings. It's a pop-up, so watch out for popup blocker if the help window does not appear.
 
@@ -24,7 +27,29 @@ Current compatibility: Runs on Chrome/Firefox MAC OSX/Linux.
 python setup.py install
 ```
 
-The installation will copy two files into your Jupyter customization directory (by default ~/.jupyter/custom). It will also add one entry to your custom.js file in the same directory.
+The installation will copy two files into your Jupyter customization directory (by default ~/.jupyter/custom). It will also add one entry to your custom.js file in the same directory. No need to restart your server. Just reload any notebook page that is already open.
+
+###*Usage*###
+
+Emacs bindings are active whenever the cursor is in a cell that is in edit mode. The bindings are inactive in command mode. The **F1** or **Ctrl-x h** keys pop up a keyboard bindings table. Its order is unfortunately not very useful right now. 
+
+The bindings are mostly what you expect, except in cases of conflict with common browser settings. See [bugs and limitations](#bugs).
+
+Here are a few bindings you may not be aware of:
+
+|Key | Action |
+|-------------|
+|ctrl-shift-s | starts regex search (forward only)|
+|esc          | during incremental search:<br>exit search leaving cursor after match|
+|ctrl-g       | during incremental search:<br>exit search restoring cursor.       |
+|ctrl-shift-, | cursor to start of cell |
+|ctrl-shift-. | cursor to end of cell |
+|ctrl-shift-p | cursor to previous cell |
+|ctrl-shift-n | cursor to next cell |
+|alt-up       | go to first cell |
+|alt-down     | got to last cell |
+
+
 
 This is all you need to know for *EmacsyPlus*. Below is information about an underlying keymapping facility on which *EmacsyPlus* is built. Only read if you want to build a different mode.
 
@@ -106,8 +131,7 @@ The `nxtKey` is a string such as: 'a', 'Ctrl-b', 'Ctrl-B', 'Alt-x', etc.
 
 - While the code is all CodeMirror, it does assume the existence of a global variable CodeMirror. This variable is available in Jupyter 4.0.x notebooks, which is where the code was tested. The automatic installation assumes that Jupyter is installed. For other contexts a more manual installation is needed: The classes need to be loaded, and the CodeMirror variable must be created.
 
+<a name="bugs"></a>
 ###*Known Bugs or Limitations*
-- Currently, reverse isearch and reverse regex search are not implemented.
-- Some browsers' keyboard shortcuts are processed before CodeMirror receives keystrokes. Two common Emacs keys conflict with this pre-emption: Alt/Meta/Cmd-D, and Alt/Meta/Cmd-W. The former sets a bookmark for the currently visited page. The latter deletes the current browser tab. In Firefox you can install the MenuWizard add-on and disable/change those, or other interfering keys. For Chrome on Mac: Use System Preferences-->Keyboard-->AppShortcuts
-to bind Cmd-W to something else, like F2. 
-- The`Cnt-x Cnt-x` (exchange point/mark) is not implemented. Instead, the current code binds this command to `Cnt-x Cnt-X` instead. Note the capitalization in the second keystroke. (It's a code re-entry problem that needs fixing.)
+- Some browsers' keyboard shortcuts are processed before the (CodeMirror) editors within cells receive keystrokes. Two common Emacs keys conflict with this pre-emption: <p>`Alt/Meta/Cmd-D`, and<br> `Alt/Meta/Cmd-W`.<p>The former sets a bookmark for the currently visited page. The latter deletes the current browser tab. In Firefox you can install the MenuWizard add-on and disable/change those, or other interfering keys. For Chrome on Mac: Use System Preferences-->Keyboard-->AppShortcuts to bind Cmd-W to something else, like F2. 
+- Exchange point/mark) is not bound to `Cnt-x Cnt-x` as it should be. Instead, the current code binds this command to `Cnt-x Cnt-X` instead. Note the capitalization in the second keystroke. (This is a code re-entry problem into the Ctrl-X handler that needs fixing.)
