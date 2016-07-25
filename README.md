@@ -1,6 +1,6 @@
 ##Enhanced Emacs Mode for CodeMirror and Jupyter
 
-An Emacs mode for Jupyter that is closer to Gnu Emacs than the built-in *emacsy* mode. Built for Jupyter 4.x. For instance, the following are provided:
+An Emacs mode for Jupyter that is closer to Gnu Emacs than the built-in *emacsy* mode. Assumes Jupyter 4.x. For instance, the following are provided:
 
 - Named content registers
 - Named location registers
@@ -49,11 +49,13 @@ Here are a few bindings you may not be aware of:
 |alt-up       | go to first cell |
 |alt-down     | got to last cell |
 
-
+**Customization**: To change key bindings, find method `buildEmacsyPlus()` in file emacsyPlus.js. You will see the `emacsyPlusMap` and the `ctrlXMap`.
 
 This is all you need to know for *EmacsyPlus*. Below is information about an underlying keymapping facility on which *EmacsyPlus* is built. Only read if you want to build a different mode.
 
 Do scan the [limitations](#bugs) at the bottom.
+
+**Note**: Except for search, the implementation uses the standard CodeMirror API, and is therefore adaptable to CodeMirror installations in other contexts. Since search needs to reach into the output areas of cells, Jupyter dependencies are unavoidable.
 
 -----------
 
@@ -133,8 +135,12 @@ The `nxtKey` is a string such as: 'a', 'Ctrl-b', 'Ctrl-B', 'Alt-x', etc.
 
 <a name="bugs"></a>
 ###*Known Bugs or Limitations*
-- Some browsers' keyboard shortcuts are processed before the (CodeMirror) editors within cells receive keystrokes. Two common Emacs keys conflict with this pre-emption: <p>`Alt/Meta/Cmd-D`, and<br> `Alt/Meta/Cmd-W`.<p>The former sets a bookmark for the currently visited page. The latter deletes the current browser tab. In Firefox you can install the MenuWizard add-on and disable/change those, or other interfering keys. For Chrome on Mac: Use System Preferences-->Keyboard-->AppShortcuts to bind Cmd-W to something else, like F2.<p>Similarly, Ubuntu uses Alt to activate main-menu items. To use the alt-commands one needs to disable that Ubuntu behavior. Disabling `System Settings --> Keyboard --> Short-cuts--> *Key to show the HUD*` unfortunately does not help. The Web suggests use of ccsm (CompizConfig Settings Manager). I have not investigated.<p>
-
-- The cut buffer is internal to emacsyPlus. The browser's clipboard is unavailable to applications for security reasons. In order to preserve the ability to copy items from Jupyter cells to the browser clipboard, the usual Emacs binding Alt/Cmd-v (down one screen) is left unbound. Same for Alt/Cmd-c (capitalize word).<p>
-- Exchange point/mark) is not bound to `Cnt-x Cnt-x` as it should be. Instead, the current code binds this command to `Cnt-x Cnt-X` instead. Note the capitalization in the second keystroke. (This is a code re-entry problem into the Ctrl-X handler that needs fixing.)<p>
+- Some browsers' keyboard shortcuts are processed before the (CodeMirror) editors within cells receive keystrokes. Two common Emacs keys conflict with this pre-emption: <p>`Alt/Meta/Cmd-D`, and<br> `Alt/Meta/Cmd-W`.<p>The former sets a bookmark for the currently visited page. The latter deletes the current browser tab. In Firefox you can install the MenuWizard add-on and disable/change those, or other interfering keys. For Chrome on Mac: Use System Preferences-->Keyboard-->AppShortcuts to bind Cmd-W to something else, like F2.<p>Similarly, Ubuntu uses Alt to activate main-menu items. To use the alt-commands one needs to disable that Ubuntu behavior. Disabling `System Settings --> Keyboard --> Short-cuts--> *Key to show the HUD*` unfortunately does not help. The Web suggests use of ccsm (CompizConfig Settings Manager). I have not investigated.
+<p>
+- The cut buffer is internal to emacsyPlus. The browser's clipboard is unavailable to applications for security reasons. In order to preserve the ability to copy items from Jupyter cells to the browser clipboard, the usual Emacs binding Alt/Cmd-v (down one screen) is left unbound. Same for Alt/Cmd-c (capitalize word).
+<p>
+- Exchange point/mark) is not bound to `Cnt-x Cnt-x` as it should be. Instead, the current code binds this command to `Cnt-x Cnt-X` instead. Note the capitalization in the second keystroke. (This is a code re-entry problem into the Ctrl-X handler that needs fixing.)
+<p>
 - Regular expression search can be confusing. The search considers text inside a cell as one string. This works fine for incremental search. But when running a regex search, one is tempted to see cells has having multiple lines. Example:<p>`brown fox`<br>`yellow bird`<br>`blue scooter`<p>Starting at pos 0, the search `^[b].*` correctly finds the end of the first line as a match. But repeating this search fails to find the third line. Reason: `blue scooter` is not 'really' after a newline. Needs fixing.
+<p>
+- Vulnerability to changes in the Jupyter implementation. Unless Jupyter changes the use of CodeMirror for cell content, most of the emacsyPlus mode should survive changes. However, search through notebooks includes text in the output area of cells. Jupyter currently stores those as regular DOM nodes, and no official API exists to extract the text from those. So, if that aspect changes, then search will be affected.
