@@ -822,8 +822,9 @@ function EmacsyPlus() {
     }
 
     var prepSearch = function(cm) {
-        var cur = cm.doc.getCursor();
-        savedPlace = {cm : cm, line : cur.line, ch : cur.ch};      
+        var cur  = cm.doc.getCursor();
+        var cell = Jupyter.notebook.get_selected_cell()
+        savedPlace = {cm : cm, line : cur.line, ch : cur.ch, cell : cell};      
     }
 
     var primeSearchStart = function(cm, iSearcher) {
@@ -882,7 +883,13 @@ function EmacsyPlus() {
                 // For regex we only collected the regex
                 // in the minibuf so far. Execute the
                 // search before quiting the minibuf:
-                iSearcher.next();
+                var regexSearchRes = iSearcher.next();
+                // If search failed, restore the cursor
+                // to its original pos; else last cell
+                // will be current:
+                if (regexSearchRes === null) {
+                    restoreCursor = true;
+                }
             }
             abortISearch(restoreCursor);
             evt.preventDefault();
@@ -1005,7 +1012,7 @@ function EmacsyPlus() {
 
         if (restoreCursor && typeof(savedPlace) === 'object') {
             savedPlace.cm.doc.setCursor({line: savedPlace.line, ch: savedPlace.ch});
-            curCell.focus_cell();
+            savedPlace.cell.focus_cell();
             Jupyter.notebook.edit_mode();
         } else {
             var cm        = getCm(curCell);
