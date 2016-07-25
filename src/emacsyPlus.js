@@ -1131,6 +1131,18 @@ function EmacsyPlus() {
         evt.abort = false;
         evt.search = undefined;
 
+        // Shift-Ctrl-s or Shift-Ctrl-r inside regex-forward-search
+        // minibuf? This asks for 'do it again':
+        if (evt.shiftKey && evt.ctrlKey) {
+            if (evt.key === 'S') {
+                evt.search = 'nxtForward';
+                return true;
+            } else if (evt.key === 'R') {
+                evt.search = 'nxtForward';
+                return true;
+            }
+        }
+
         // Special care about two ctrl-s in a row
         // at start of isearch: first ctrl-s is
         // seen by Jupyter cell, not this routine.
