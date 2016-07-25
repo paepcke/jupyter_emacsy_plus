@@ -95,8 +95,6 @@ function EmacsyPlus() {
     var ctrlXMap = {};
     var mark = null;
     var os = km.getOsPlatform();
-    var ctrlInProgress = false;
-    var ctrlShiftInProgress = false;
 
     var mBufName   = 'minibuffer';
     var minibufMonitored = false;
@@ -1122,13 +1120,21 @@ function EmacsyPlus() {
     var iSearchAllowable = function(evt) {
 
         /*
-          Accepts: esc, cnt-g, cnt-s, cnt-r
-          For esc and cnt-g: sets evt.abort=true, else 'false'
+          Keydown handler while in minibuffer.
+          Accepts: esc, cnt-g, cnt-s, cnt-r,
+          shift-ctrl-s, shift-ctrl-r. 
+
+          Sets additional event object properties for the caller
+          to know what went on:
+            - evt.nxtForward === true   : ctrl-s or shift-ctrl-s was entered
+            - evt.nxtBackward === true  : ctrl-r or shift-ctrl-r was entered.
+            - evt.abort === esc         : esc entered in iSearch mode, or 
+                                          ENTER entered in regex Search mode.
          */
 
         var keyCode = evt.which;
 
-        evt.abort = false;
+        evt.abort  = false;
         evt.search = undefined;
 
         // Shift-Ctrl-s or Shift-Ctrl-r inside regex-forward-search
@@ -1138,35 +1144,22 @@ function EmacsyPlus() {
                 evt.search = 'nxtForward';
                 return true;
             } else if (evt.key === 'R') {
-                evt.search = 'nxtForward';
+                evt.search = 'nxtBackward';
                 return true;
             }
         }
 
-        // Special care about two ctrl-s in a row
-        // at start of isearch: first ctrl-s is
-        // seen by Jupyter cell, not this routine.
-        // That first ctrl-s opens the minibuffer,
-        // and from then on this routine catches
-        // keydown events. So ctrl-keys and letter
-        // keys are processed sequentially. We see
-        // the ctrl going down, then the other letter.
-        // When we see the ctrl key go down, we
-        // set ctrlInProgress true so we enter the
-        // following switch. But if a ctrl-something
-        // comes in as first chr after minibuffer opens,
-        // we only see the char. BUT: then the evt.ctrlKey
-        // will be set:
-        if (ctrlInProgress || evt.ctrlKey) {
-            // Ctrl-key held down, then key pressed:
+        // Ctrl-G for abort search. Ctrl-s for search
+        // forward again. Used when doing Ctrl-s into
+        // new minibuffer, and wanting the old search
+        // term placed there. Analogously for Ctrl-r:
+        if (evt.ctrlKey) {
             switch(evt.key) {
             case 'g':
-                ctrlInProgress = false;
                 evt.abort = 'Ctrl-G';
                 return true;
                 break;
             case 's':
-                ctrlInProgress = false;                
                 evt.search = 'nxtForward';
                 return true;
                 break;
@@ -1175,18 +1168,16 @@ function EmacsyPlus() {
                 return true;
                 break;
             default:
-                ctrlInProgress = false; // unknown ctrl-key
                 return false; // have caller do nothing
                 break;
             }
         }
-
+            
         // In iSearch mode: exit search,
         // leave cursor at found spot.
         // For regex search: execute the
         // search:
         if (keyCode === ENTER_CODE) {
-            ctrlInProgress = false;
             evt.abort = 'esc';
             return true;
         }
@@ -1194,16 +1185,8 @@ function EmacsyPlus() {
         // Exit search, leave cursor where
         // search found spot:
         if (keyCode === ESC_CODE) {
-            ctrlInProgress = false;
             evt.abort = 'esc';
             return true;
-        }
-
-        // Just register that the next
-        // key will be a ctrl-<something> key
-        if (keyCode === CTRL_CODE) {
-            ctrlInProgress = true;
-            return false;
         }
 
         var valid =
