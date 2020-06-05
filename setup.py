@@ -1,10 +1,23 @@
 from __future__ import print_function
 import shutil
 import os, sys
+from setuptools import setup, find_packages
 
 if (len(sys.argv) != 2) or (sys.argv[1] != 'install'):
-  print("This %s is special; only the 'install' command is recognized." % sys.argv[0], file=sys.stderr)
+  print("This %s is special; only the 'install' command is recognized." % sys.argv[0],
+        file=sys.stderr)
   sys.exit()
+
+setup(
+    name = "jupyter_emacsy_plus",
+    version = "0.1",
+    packages = find_packages(),
+
+    # Dependencies on other packages:
+    setup_requires   = [],
+    install_requires = ['jupyter-core>=4.6.3',
+                        ]
+    )
 
 # Is Jupyter installed?
 try:
@@ -37,16 +50,20 @@ if not os.path.exists(extension_dir):
 # Add the JS load directive to the custom.js file,
 # if that directive does not already exist there:
 
-try:  
-  with open(custom_js_path, 'r') as fd:
-    customizations = fd.read();
-  
+try:
+  if os.path.exists(custom_js_path):
+    with open(custom_js_path, 'r') as fd:
+      customizations = fd.read();
+  else:
+    customizations = ''
+    
   if customizations.find(load_str) == -1:
     print('Adding JavaScript load directive to %s' % custom_js_path)
-    with open(custom_js_path, 'r') as fd:    
+    with open(custom_js_path, 'w') as fd:    
       fd.write(load_str)
 except IOError as e:
-  print("Cannot add JavaScript load directive to Jupyter's custom.js file. Aborting. (%s)" % `e`, file=sys.stderr)
+  print(f"Cannot add JavaScript load directive to Jupyter's custom.js file. Aborting. {repr(e)}", 
+        file=sys.stderr)
   sys.exit()
 
 print('Copying emacsyPlus.js to %s' % extension_dir)
